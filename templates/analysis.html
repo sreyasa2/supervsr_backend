@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Analysis - CCTV Analysis System</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('video.index') }}">
+                <i class="bi bi-camera-video"></i> CCTV Analysis
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('video.index') }}">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('video.upload_video') }}">Upload Video</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="alert alert-info">
+            <ul class="mb-0">
+                {% for message in messages %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <div class="row">
+            <div class="col-md-12">
+                <h1 class="mb-4">Video Analysis Results</h1>
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">{{ video.original_filename }}</h4>
+                        <span class="badge bg-secondary">Uploaded: {{ video.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Video Details</h5>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item">Duration: {{ "%.2f"|format(video.duration or 0) }} seconds</li>
+                                    <li class="list-group-item">File Size: {{ "%.2f"|format(video.filesize / (1024 * 1024)) }} MB</li>
+                                    <li class="list-group-item">Screenshots: {{ screenshots|length }}</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="ratio ratio-16x9">
+                                    <video controls>
+                                        <source src="{{ url_for('video.uploaded_file', filename=video.filename) }}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <h2 class="mb-3">Screenshots Analysis</h2>
+                <p class="text-muted">Click on a screenshot to analyze it with Google Gemini AI</p>
+                
+                <div class="row" id="screenshots-container">
+                    {% if screenshots %}
+                        {% for screenshot in screenshots %}
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                <img src="{{ url_for('video.uploaded_file', filename='screenshots/' + screenshot.filename) }}" 
+                                     class="card-img-top screenshot-img" alt="Screenshot at {{ screenshot.timestamp }}s">
+                                <div class="card-body">
+                                    <h5 class="card-title">Timestamp: {{ "%.2f"|format(screenshot.timestamp) }}s</h5>
+                                    <button class="btn btn-primary mt-2 analyze-btn" data-screenshot-id="{{ screenshot.id }}">
+                                        <i class="bi bi-robot"></i> Analyze with Gemini
+                                    </button>
+                                </div>
+                                <div class="card-footer analysis-result" id="analysis-{{ screenshot.id }}" style="display: none;">
+                                    <h6 class="mt-2 mb-2">AI Analysis:</h6>
+                                    <div class="analysis-text"></div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="col-12">
+                            <div class="alert alert-warning">
+                                No screenshots were extracted from this video. The file might be corrupted or in an unsupported format.
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis Loading Modal -->
+    <div class="modal fade" id="analysisModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center p-5">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Analyzing with Google Gemini AI...</h5>
+                    <p class="text-muted mb-0">This may take a few moments</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-5 py-4 bg-dark text-center">
+        <div class="container">
+            <p class="mb-0 text-white-50">CCTV Analysis System powered by Google Gemini AI</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all analyze buttons
+            const analyzeButtons = document.querySelectorAll('.analyze-btn');
+            const analysisModal = new bootstrap.Modal(document.getElementById('analysisModal'));
+            
+            // Add click event listener to each button
+            analyzeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const screenshotId = this.getAttribute('data-screenshot-id');
+                    const resultElement = document.getElementById(`analysis-${screenshotId}`);
+                    const analysisTextElement = resultElement.querySelector('.analysis-text');
+                    
+                    // Don't re-analyze if we already have results
+                    if (resultElement.style.display !== 'none' && analysisTextElement.textContent.trim() !== '') {
+                        return;
+                    }
+                    
+                    // Show loading modal
+                    analysisModal.show();
+                    
+                    // Disable the button while analyzing
+                    this.disabled = true;
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i> Analyzing...';
+                    
+                    // Make API request to analyze the screenshot
+                    fetch(`/api/analyze/${screenshotId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Server responded with ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Hide loading modal
+                        analysisModal.hide();
+                        
+                        if (data.success) {
+                            // Show the analysis result
+                            analysisTextElement.textContent = data.analysis;
+                            resultElement.style.display = 'block';
+                            
+                            // Update button
+                            this.innerHTML = '<i class="bi bi-check-circle"></i> Analysis Complete';
+                            this.classList.replace('btn-primary', 'btn-success');
+                        } else {
+                            throw new Error(data.error || 'Analysis failed');
+                        }
+                    })
+                    .catch(error => {
+                        // Hide loading modal
+                        analysisModal.hide();
+                        
+                        console.error('Error analyzing screenshot:', error);
+                        
+                        // Show error message
+                        analysisTextElement.textContent = `Error: ${error.message}`;
+                        resultElement.style.display = 'block';
+                        resultElement.classList.add('text-danger');
+                        
+                        // Update button
+                        this.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Analysis Failed';
+                        this.classList.replace('btn-primary', 'btn-danger');
+                        this.disabled = false;
+                    });
+                });
+            });
+            
+            // Check if any screenshots already have analysis results
+            document.querySelectorAll('.screenshot-img').forEach(img => {
+                const screenshotId = img.closest('.card').querySelector('.analyze-btn').getAttribute('data-screenshot-id');
+                
+                // Try to fetch existing analysis
+                fetch(`/api/screenshot/${screenshotId}/analysis`)
+                    .then(response => {
+                        if (!response.ok) {
+                            if (response.status === 404) {
+                                // No analysis yet, that's fine
+                                return null;
+                            }
+                            throw new Error(`Server responded with ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data && data.success) {
+                            const resultElement = document.getElementById(`analysis-${screenshotId}`);
+                            const analysisTextElement = resultElement.querySelector('.analysis-text');
+                            const button = document.querySelector(`.analyze-btn[data-screenshot-id="${screenshotId}"]`);
+                            
+                            // Show the analysis result
+                            analysisTextElement.textContent = data.analysis.text;
+                            resultElement.style.display = 'block';
+                            
+                            // Update button
+                            button.innerHTML = '<i class="bi bi-check-circle"></i> Analysis Complete';
+                            button.classList.replace('btn-primary', 'btn-success');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching analysis:', error);
+                    });
+            });
+        });
+    </script>
+</body>
+</html>
