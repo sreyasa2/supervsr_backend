@@ -7,8 +7,6 @@ import cv2
 from flask import Blueprint, request, jsonify, current_app, abort, send_from_directory
 from api.models import RTSPStream, Screenshot, AnalysisResult
 from api import db
-from api.services.video_processor import capture_screenshot_from_rtsp
-from api.services.gemini_service import analyze_screenshot
 
 video_bp = Blueprint('video', __name__)
 logger = logging.getLogger(__name__)
@@ -184,42 +182,6 @@ def check_stream(stream_id):
         'status': stream.status
     })
 
-@video_bp.route('/api/stream/<int:stream_id>/capture', methods=['POST'])
-def capture_screenshot(stream_id):
-    """API endpoint to capture a screenshot from an RTSP stream"""
-    stream = RTSPStream.query.get_or_404(stream_id)
-    
-    # Check if the stream is accessible
-    if not stream.is_accessible:
-        # Try to check it first
-        is_accessible = check_rtsp_stream(stream.rtsp_url)
-        stream.is_accessible = is_accessible
-        stream.status = 'active' if is_accessible else 'error'
-        stream.last_checked = datetime.datetime.utcnow()
-        db.session.commit()
-        
-        if not is_accessible:
-            return jsonify({'success': False, 'error': 'RTSP stream is not accessible'}), 400
-    
-    try:
-        # Capture a screenshot
-        screenshot = capture_screenshot_from_rtsp(stream.id)
-        
-        if not screenshot:
-            return jsonify({'success': False, 'error': 'Failed to capture screenshot'}), 500
-        
-        return jsonify({
-            'success': True,
-            'screenshot_id': screenshot.id,
-            'filename': screenshot.filename,
-            'capture_time': screenshot.capture_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'message': 'Screenshot captured successfully'
-        })
-    
-    except Exception as e:
-        logger.error(f"Error capturing screenshot: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @video_bp.route('/api/stream/<int:stream_id>/screenshots', methods=['GET'])
 def get_stream_screenshots(stream_id):
     """API endpoint to list all screenshots for a stream"""
@@ -234,33 +196,6 @@ def get_stream_screenshots(stream_id):
     } for ss in screenshots]
     
     return jsonify({'success': True, 'screenshots': screenshots_data})
-
-@video_bp.route('/api/screenshot/<int:screenshot_id>/analyze', methods=['POST'])
-def analyze_screenshot_endpoint(screenshot_id):
-    """API endpoint to analyze a specific screenshot with Gemini"""
-    screenshot = Screenshot.query.get_or_404(screenshot_id)
-    
-    try:
-        # Call Gemini service to analyze the screenshot
-        analysis_text = analyze_screenshot(screenshot.file_path)
-        
-        # Store the analysis result
-        analysis = AnalysisResult(
-            screenshot_id=screenshot.id,
-            analysis_text=analysis_text
-        )
-        db.session.add(analysis)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True, 
-            'screenshot_id': screenshot_id,
-            'analysis': analysis_text
-        })
-    
-    except Exception as e:
-        logger.error(f"Error analyzing screenshot: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 @video_bp.route('/api/screenshot/<int:screenshot_id>/analysis', methods=['GET'])
 def get_screenshot_analysis(screenshot_id):
