@@ -71,10 +71,11 @@ class StreamManager:
             '-c:a', 'aac',   # Convert audio to AAC
             '-f', 'hls',
             '-hls_time', '2',  # 2 second segments
-            '-hls_list_size', '3',  # Keep 3 segments
+            '-hls_list_size', '5',  # Keep 5 segments
             '-hls_flags', 'delete_segments',  # Delete old segments
             '-hls_segment_type', 'mpegts',  # Use MPEG-TS segments
             '-hls_allow_cache', '0',  # Disable caching
+            '-hls_segment_filename', os.path.join(temp_dir, 'segment_%03d.ts'),  # Consistent segment naming
             playlist_path
         ]
         
@@ -120,12 +121,13 @@ class StreamManager:
         frame_path = os.path.join(temp_dir, 'frame.jpg')
         
         # Get the latest segment
-        segments = sorted([f for f in os.listdir(temp_dir) if f.endswith('.ts')])
+        segments = sorted([f for f in os.listdir(temp_dir) if f.startswith('segment_') and f.endswith('.ts')])
         if not segments:
             logger.error(f"No segments available for stream {stream_id}")
             return None
             
         latest_segment = os.path.join(temp_dir, segments[-1])
+        logger.debug(f"Processing segment: {latest_segment}")
         
         # Extract frame from latest segment
         ffmpeg_cmd = [
@@ -145,9 +147,11 @@ class StreamManager:
             )
             
             if process.returncode == 0 and os.path.exists(frame_path):
+                logger.debug(f"Successfully extracted frame from {latest_segment}")
                 return frame_path
             else:
-                logger.error(f"Failed to extract frame for stream {stream_id}")
+                stderr = process.stderr.decode() if process.stderr else "No error output"
+                logger.error(f"Failed to extract frame for stream {stream_id}. FFmpeg error: {stderr}")
                 return None
                 
         except Exception as e:

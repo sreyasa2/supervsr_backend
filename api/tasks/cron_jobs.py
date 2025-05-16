@@ -4,6 +4,7 @@ from io import BytesIO
 from google.cloud import storage
 import os
 import shutil
+from flask import current_app
 
 from api.tasks.stream_manager import StreamManager
 
@@ -84,8 +85,28 @@ def screenshots(app):
                 logger.exception(f"Local save failed for {stream.name}: {e}")
 
 def register_cron_jobs(scheduler, app):
+    # Check if jobs are already registered
+    existing_jobs = scheduler.get_jobs()
+    if any(job.id == 'screenshots' for job in existing_jobs):
+        logger.info("Screenshot job already registered")
+        return
+        
     initialize_streams(app)  # Start streams at scheduler startup
     # Verify streams every minute
-    scheduler.add_job(func=verify_streams, args=(app,), trigger="interval", seconds=60)
+    scheduler.add_job(
+        func=verify_streams,
+        args=(app,),
+        trigger="interval",
+        seconds=60,
+        id='verify_streams',
+        replace_existing=True
+    )
     # Take screenshots every 10 seconds
-    scheduler.add_job(func=screenshots, args=(app,), trigger="interval", seconds=10)
+    scheduler.add_job(
+        func=screenshots,
+        args=(app,),
+        trigger="interval",
+        seconds=10,
+        id='screenshots',
+        replace_existing=True
+    )

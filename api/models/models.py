@@ -55,3 +55,5 @@ class AnalysisResult(db.Model):
                     )
     analysis_text  = db.Column(db.Text)
     created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+
+
