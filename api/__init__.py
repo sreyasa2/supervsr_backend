@@ -19,11 +19,10 @@ class Base(DeclarativeBase):
 db = SQLAlchemy(model_class=Base)
 
 def start_scheduler(app):
-    """Start APScheduler with the background job"""
     scheduler = BackgroundScheduler()
     register_cron_jobs(scheduler, app)
     scheduler.start()
-    logger.info("APScheduler started.")
+    logger.info("APScheduler with RTSP job and stream manager started.")
     return scheduler
 
 def create_app(test_config=None):
