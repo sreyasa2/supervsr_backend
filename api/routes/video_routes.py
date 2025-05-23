@@ -61,16 +61,15 @@ def check_rtsp_stream(url):
 @video_bp.route('/api/streams', methods=['GET'])
 def get_streams():
     """API endpoint to list all RTSP streams"""
-    streams = RTSPStream.query.order_by(RTSPStream.created_at.desc()).all()
+    streams = RTSPStream.query.all()
     streams_data = [{
         'id': stream.id,
         'name': stream.name,
         'rtsp_url': stream.rtsp_url,
-        'location': stream.location,
-        'status': stream.status,
-        'is_accessible': stream.is_accessible,
-        'created_at': stream.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-        'screenshot_count': len(stream.screenshots)
+        'description': stream.description,
+        'coco_link': stream.coco_link,
+        'sops': [{'id': sop.id, 'name': sop.name} for sop in stream.sops],
+        'analysis_count': len(stream.analysis)
     } for stream in streams]
     
     return jsonify({'success': True, 'streams': streams_data})
@@ -86,8 +85,8 @@ def add_rtsp_stream():
     
     rtsp_url = data.get('rtsp_url')
     name = data.get('name')
-    location = data.get('location', '')
     description = data.get('description', '')
+    coco_link = data.get('coco_link', '')
     
     # Validate RTSP URL format
     if not validate_rtsp_url(rtsp_url):
@@ -98,40 +97,21 @@ def add_rtsp_stream():
     if existing_stream:
         return jsonify({'success': False, 'error': 'RTSP stream with this URL already exists'}), 409
     
-    # Check if the stream is accessible
-    is_accessible = check_rtsp_stream(rtsp_url)
-    if not is_accessible:
-        # Still add the stream, but mark it as inaccessible
-        logger.warning(f"Added inaccessible RTSP stream: {rtsp_url}")
-    
     try:
         # Create new RTSP stream record
         stream = RTSPStream(
             name=name,
             rtsp_url=rtsp_url,
-            location=location,
             description=description,
-            status='active' if is_accessible else 'error',
-            is_accessible=is_accessible,
-            last_checked=datetime.datetime.utcnow()
+            coco_link=coco_link
         )
         db.session.add(stream)
         db.session.commit()
-        
-        # Try to capture an initial screenshot if accessible
-        if is_accessible:
-            try:
-                screenshot = capture_screenshot_from_rtsp(stream.id)
-                if screenshot:
-                    logger.info(f"Initial screenshot captured for stream {stream.id}")
-            except Exception as e:
-                logger.error(f"Error capturing initial screenshot: {str(e)}")
         
         return jsonify({
             'success': True,
             'stream_id': stream.id,
             'name': stream.name,
-            'is_accessible': stream.is_accessible,
             'message': 'RTSP stream added successfully'
         })
     
@@ -151,33 +131,74 @@ def get_stream(stream_id):
             'id': stream.id,
             'name': stream.name,
             'rtsp_url': stream.rtsp_url,
-            'location': stream.location,
             'description': stream.description,
-            'status': stream.status,
-            'is_accessible': stream.is_accessible,
-            'last_checked': stream.last_checked.strftime('%Y-%m-%d %H:%M:%S') if stream.last_checked else None,
-            'created_at': stream.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': stream.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            'coco_link': stream.coco_link,
+            'sops': [{
+                'id': sop.id,
+                'name': sop.name,
+                'description': sop.description
+            } for sop in stream.sops],
+            'analysis': [{
+                'id': analysis.id,
+                'timestamp': analysis.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'output': analysis.output
+            } for analysis in stream.analysis]
         }
     })
 
-@video_bp.route('/api/stream/<int:stream_id>/check', methods=['POST'])
-def check_stream(stream_id):
-    """API endpoint to check if a stream is accessible"""
+@video_bp.route('/api/stream/<int:stream_id>', methods=['PUT'])
+def update_stream(stream_id):
+    """API endpoint to update a specific RTSP stream"""
+    stream = RTSPStream.query.get_or_404(stream_id)
+    data = request.json
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+    
+    try:
+        if 'name' in data:
+            stream.name = data['name']
+        if 'description' in data:
+            stream.description = data['description']
+        if 'coco_link' in data:
+            stream.coco_link = data['coco_link']
+        if 'rtsp_url' in data:
+            if not validate_rtsp_url(data['rtsp_url']):
+                return jsonify({'success': False, 'error': 'Invalid RTSP URL format'}), 400
+            stream.rtsp_url = data['rtsp_url']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Stream updated successfully',
+            'stream': {
+                'id': stream.id,
+                'name': stream.name,
+                'rtsp_url': stream.rtsp_url,
+                'description': stream.description,
+                'coco_link': stream.coco_link
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error updating stream: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@video_bp.route('/api/stream/<int:stream_id>', methods=['DELETE'])
+def delete_stream(stream_id):
+    """API endpoint to delete a specific RTSP stream"""
     stream = RTSPStream.query.get_or_404(stream_id)
     
-    # Check if the stream is accessible
-    is_accessible = check_rtsp_stream(stream.rtsp_url)
-    
-    # Update stream status
-    stream.is_accessible = is_accessible
-    stream.status = 'active' if is_accessible else 'error'
-    stream.last_checked = datetime.datetime.utcnow()
-    db.session.commit()
-    
-    return jsonify({
-        'success': True,
-        'stream_id': stream.id,
-        'is_accessible': stream.is_accessible,
-        'status': stream.status
-    })
+    try:
+        db.session.delete(stream)
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': 'Stream deleted successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error deleting stream: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

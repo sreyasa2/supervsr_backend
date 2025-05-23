@@ -93,13 +93,34 @@ def create_app(test_config=None):
             'description': 'Backend API for analyzing RTSP streams with Gemini AI',
             'endpoints': {
                 'health': '/health',
-                'streams': '/api/streams',
-                'stream_details': '/api/stream/<id>',
-                'check_stream': '/api/stream/<id>/check',
-                'capture': '/api/stream/<id>/capture',
-                'screenshots': '/api/stream/<id>/screenshots',
-                'analyze': '/api/screenshot/<id>/analyze',
-                'analysis': '/api/screenshot/<id>/analysis'
+                'streams': {
+                    'list': '/api/streams',
+                    'details': '/api/stream/<id>',
+                    'check': '/api/stream/<id>/check',
+                    'capture': '/api/stream/<id>/capture',
+                    'screenshots': '/api/stream/<id>/screenshots'
+                },
+                'sops': {
+                    'list': '/api/sops',
+                    'details': '/api/sops/<id>',
+                    'create': '/api/sops',
+                    'update': '/api/sops/<id>',
+                    'delete': '/api/sops/<id>'
+                },
+                'analysis': {
+                    'list': '/api/analysis',
+                    'details': '/api/analysis/<id>',
+                    'create': '/api/analysis',
+                    'update': '/api/analysis/<id>',
+                    'delete': '/api/analysis/<id>'
+                },
+                'models': {
+                    'list': '/api/models',
+                    'details': '/api/models/<id>',
+                    'create': '/api/models',
+                    'update': '/api/models/<id>',
+                    'delete': '/api/models/<id>'
+                }
             }
         })
 
