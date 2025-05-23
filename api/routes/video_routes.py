@@ -5,7 +5,7 @@ import logging
 import datetime
 import cv2
 from flask import Blueprint, request, jsonify, current_app, abort, send_from_directory
-from api.models import RTSPStream, Screenshot, AnalysisResult
+from api.models import RTSPStream, AnalysisResult
 from api import db
 
 video_bp = Blueprint('video', __name__)
@@ -181,40 +181,3 @@ def check_stream(stream_id):
         'is_accessible': stream.is_accessible,
         'status': stream.status
     })
-
-@video_bp.route('/api/stream/<int:stream_id>/screenshots', methods=['GET'])
-def get_stream_screenshots(stream_id):
-    """API endpoint to list all screenshots for a stream"""
-    screenshots = Screenshot.query.filter_by(stream_id=stream_id).order_by(Screenshot.capture_time.desc()).all()
-    screenshots_data = [{
-        'id': ss.id,
-        'filename': ss.filename,
-        'capture_time': ss.capture_time.strftime('%Y-%m-%d %H:%M:%S'),
-        'created_at': ss.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-        'analysis_count': len(ss.analysis_results),
-        'has_analysis': len(ss.analysis_results) > 0
-    } for ss in screenshots]
-    
-    return jsonify({'success': True, 'screenshots': screenshots_data})
-
-@video_bp.route('/api/screenshot/<int:screenshot_id>/analysis', methods=['GET'])
-def get_screenshot_analysis(screenshot_id):
-    """API endpoint to get analysis results for a screenshot"""
-    analysis = AnalysisResult.query.filter_by(screenshot_id=screenshot_id).order_by(AnalysisResult.created_at.desc()).first()
-    
-    if not analysis:
-        return jsonify({'success': False, 'error': 'No analysis found for this screenshot'}), 404
-    
-    return jsonify({
-        'success': True,
-        'analysis': {
-            'id': analysis.id,
-            'text': analysis.analysis_text,
-            'created_at': analysis.created_at.strftime('%Y-%m-%d %H:%M:%S')
-        }
-    })
-
-@video_bp.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    """Serve uploaded files"""
-    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)

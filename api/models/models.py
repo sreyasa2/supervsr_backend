@@ -1,59 +1,76 @@
 from datetime import datetime
 from api import db
 
+
 class RTSPStream(db.Model):
-    __tablename__ = 'rtsp_stream'
-    id           = db.Column(db.Integer, primary_key=True)
-    name         = db.Column(db.String(255), nullable=False)
-    rtsp_url     = db.Column(db.String(512), nullable=False, unique=True)
-    location     = db.Column(db.String(255))
-    description  = db.Column(db.Text)
-    status       = db.Column(db.String(50), default='active')
-    last_checked = db.Column(db.DateTime)
-    is_accessible= db.Column(db.Boolean, default=False)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at   = db.Column(
-                      db.DateTime,
-                      default=datetime.utcnow,
-                      onupdate=datetime.utcnow
-                   )
+    __tablename__   = 'rtsp_stream'
 
-    screenshots = db.relationship(
-        'Screenshot',
-        backref='stream',
-        lazy=True,
-        cascade='all, delete-orphan'
-    )
+    id              = db.Column(db.Integer, primary_key=True)
+    rtsp_url        = db.Column(db.String(512), nullable=False, unique=True)
+    description     = db.Column(db.Text)
+    name            = db.Column(db.String(255))
+    coco_link       = db.Column(db.String(512))
 
-class Screenshot(db.Model):
-    __tablename__ = 'screenshot'
-    id           = db.Column(db.Integer, primary_key=True)
-    stream_id    = db.Column(
-                      db.Integer,
-                      db.ForeignKey('rtsp_stream.id'),
-                      nullable=False
-                   )
-    filename     = db.Column(db.String(255), nullable=False)
-    file_path    = db.Column(db.String(255), nullable=False)
-    capture_time = db.Column(db.DateTime, default=datetime.utcnow)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    sops            = db.relationship('SOP', secondary='rtsp_sop_association', back_populates='rtsp_streams')
+    analysis        = db.relationship('AnalysisResult', backref='rtsp_stream', lazy=True)
 
-    analysis_results = db.relationship(
-        'AnalysisResult',
-        backref='screenshot',
-        lazy=True,
-        cascade='all, delete-orphan'
-    )
+
+class SOP(db.Model):
+    __tablename__   = 'sop'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    model_id        = db.Column(db.Integer, db.ForeignKey('ai_model.id'), nullable=True)
+    name            = db.Column(db.String(255))
+    description     = db.Column(db.Text)
+    prompt          = db.Column(db.Text) 
+
+    model           = db.relationship('AIModel', backref='sops', lazy=True)
+    analysis        = db.relationship('AnalysisResult', backref='sop', lazy=True)
+    rtsp_streams    = db.relationship('RTSPStream', secondary='rtsp_sop_association', back_populates='sops')
+
+
+class AIModel(db.Model):
+    __tablename__   = 'ai_model'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    name            = db.Column(db.String(255), nullable=False)
+    description     = db.Column(db.Text)
+    link            = db.Column(db.String(512))
+
 
 class AnalysisResult(db.Model):
-    __tablename__ = 'analysis_result'
-    id             = db.Column(db.Integer, primary_key=True)
-    screenshot_id  = db.Column(
-                       db.Integer,
-                       db.ForeignKey('screenshot.id'),
-                       nullable=False
-                    )
-    analysis_text  = db.Column(db.Text)
-    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    __tablename__   = 'analysis'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    rtsp_id         = db.Column(db.Integer, db.ForeignKey('rtsp_stream.id'), nullable=False)
+    sop_id          = db.Column(db.Integer, db.ForeignKey('sop.id'), nullable=True)
+    timestamp       = db.Column(db.DateTime, nullable=False)
+    output          = db.Column(db.Text)
 
 
+class Organization(db.Model):
+    __tablename__   = 'organization'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    name            = db.Column(db.String(255), nullable=False)
+    description     = db.Column(db.Text)
+
+    users           = db.relationship('User', backref='organization', lazy=True)
+
+
+class User(db.Model):
+    __tablename__   = 'user'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    org_id          = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=False)
+    name            = db.Column(db.String(255), nullable=False)
+    password        = db.Column(db.String(255), nullable=False)
+    email           = db.Column(db.String(255), unique=True)
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+rtsp_sop_association = db.Table(
+    'rtsp_sop_association',
+    db.Column('rtsp_id', db.Integer, db.ForeignKey('rtsp_stream.id'), primary_key=True),
+    db.Column('sop_id', db.Integer, db.ForeignKey('sop.id'), primary_key=True)
+)

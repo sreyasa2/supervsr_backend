@@ -4,6 +4,7 @@ import atexit
 from api import tasks
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from sqlalchemy.orm import DeclarativeBase
 from apscheduler.schedulers.background import BackgroundScheduler
 from api.tasks.cron_jobs import register_cron_jobs  
@@ -17,6 +18,7 @@ class Base(DeclarativeBase):
     pass
 
 db = SQLAlchemy(model_class=Base)
+migrate = Migrate()
 
 def start_scheduler(app):
     scheduler = BackgroundScheduler()
@@ -48,17 +50,22 @@ def create_app(test_config=None):
     
     # Initialize database with app
     db.init_app(app)
+    migrate.init_app(app, db)
     
-    # Add connection pooling options
+    # Add connection pooling options for pgbouncer
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
         "pool_size": 10,
-        "max_overflow": 20
+        "max_overflow": 20,
+        "connect_args": {
+            "application_name": "supervsr_backend",
+            "options": "-c statement_timeout=60000"
+        }
     }
 
     with app.app_context():
-        from api.models import RTSPStream, Screenshot, AnalysisResult
+        from api.models import RTSPStream, SOP, AIModel, AnalysisResult, Organization, User
         db.create_all()
 
     # Register routes
