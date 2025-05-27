@@ -1,22 +1,31 @@
 import logging
 import time
 from io import BytesIO
-from google.cloud import storage
 import os
 import shutil
 from flask import current_app
 from datetime import datetime
+from collections import defaultdict
+import tempfile
 
 from api.tasks.stream_manager import StreamManager
+from api.tasks.stitcher import process_images
+from api.utils.gcs_utils import GCSUtils
+from api.tasks.screenshot_processor import ScreenshotProcessor
 
 logger = logging.getLogger(__name__)
 
-# Set up GCS
-storage_client = storage.Client.from_service_account_json("databae-9a66ad3b2692.json")
-bucket = storage_client.get_bucket("supervsr-dev")
-
-# Shared stream manager instance
+# Initialize utilities
+gcs_utils = GCSUtils()
 stream_manager = StreamManager()
+
+# Get grid dimensions from environment variables with defaults
+GRID_ROWS = int(os.getenv('GRID_ROWS', '2'))
+GRID_COLS = int(os.getenv('GRID_COLS', '3'))
+screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
+
+# Track screenshot counts for each stream
+screenshot_counts = defaultdict(int)
 
 def initialize_streams(app):
     """Start all RTSP streams in memory"""
@@ -47,6 +56,26 @@ def verify_streams(app):
                 time.sleep(2)
                 stream_manager.start_stream(stream.id, stream.rtsp_url)
 
+def get_recent_screenshot_urls(stream_id: str, count: int) -> list[str]:
+    """
+    Get the most recent screenshot URLs for a stream from GCS.
+    
+    Args:
+        stream_id: The ID of the stream
+        count: Number of screenshots to fetch
+        
+    Returns:
+        List of GCS URLs for the screenshots
+    """
+    # List all blobs in the screenshots folder
+    blobs = list(bucket.list_blobs(prefix=f"screenshots/{stream_id}-"))
+    
+    # Sort by creation time (newest first) and take the most recent ones
+    recent_blobs = sorted(blobs, key=lambda x: x.time_created, reverse=True)[:count]
+    
+    # Get public URLs for each blob
+    return [blob.public_url for blob in recent_blobs]
+
 def screenshots(app):
     """Capture latest frame from memory and upload every 10 seconds"""
     from api.models import RTSPStream
@@ -65,27 +94,14 @@ def screenshots(app):
                 logger.warning(f"No frame available yet for {stream.name}")
                 continue
 
-            # Format current time as yy-mm-dd--hour--min--second
-            current_time = datetime.now().strftime('%y-%m-%d--%H--%M--%S')
-            file_name = f"screenshots/{stream.id}-{stream.name.replace(' ', '_')}-{current_time}.jpg"
-
-            # Upload to GCS
-            try:
-                blob = bucket.blob(file_name)
-                blob.upload_from_filename(frame_path)
-                logger.info(f"Uploaded screenshot to GCS: {file_name}")
-            except Exception as e:
-                logger.exception(f"Upload failed for {stream.name}: {e}") 
-
-            # Save locally
-            try:
-                local_dir = os.path.join('uploads', 'screenshots')
-                os.makedirs(local_dir, exist_ok=True)
-                local_path = os.path.join(local_dir, os.path.basename(file_name))
-                shutil.copy2(frame_path, local_path)
-                logger.info(f"Saved screenshot locally: {local_path}")
-            except Exception as e:
-                logger.exception(f"Local save failed for {stream.name}: {e}") 
+            # Process the screenshot with grid dimensions
+            screenshot_processor.process_screenshot(
+                stream_id=stream.id,
+                stream_name=stream.name,
+                frame_path=frame_path,
+                grid_rows=GRID_ROWS,  
+                grid_cols=GRID_COLS
+            )
 
 def register_cron_jobs(scheduler, app):
     # Check if jobs are already registered
