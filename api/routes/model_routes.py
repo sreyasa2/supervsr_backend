@@ -3,6 +3,7 @@ import datetime
 from flask import Blueprint, request, jsonify, current_app
 from api.models import AIModel, SOP
 from api import db
+from sqlalchemy.exc import SQLAlchemyError
 
 model_bp = Blueprint('model', __name__)
 logger = logging.getLogger(__name__)
@@ -10,27 +11,36 @@ logger = logging.getLogger(__name__)
 @model_bp.route('/api/models', methods=['GET'])
 def get_models():
     """API endpoint to list all AI models"""
-    models = AIModel.query.order_by(AIModel.name).all()
-    models_data = [{
-        'id': model.id,
-        'name': model.name,
-        'description': model.description,
-        'link': model.link,
-        'sop_count': len(model.sops)
-    } for model in models]
-    
-    return jsonify({'success': True, 'models': models_data})
+    try:
+        models = AIModel.query.order_by(AIModel.name).all()
+        models_data = [{
+            'id': model.id,
+            'name': model.name,
+            'description': model.description,
+            'link': model.link,
+            'sop_count': len(model.sops)
+        } for model in models]
+        
+        return jsonify({'success': True, 'models': models_data})
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while fetching models: {str(e)}")
+        return jsonify({'success': False, 'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error while fetching models: {str(e)}")
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500
 
 @model_bp.route('/api/models', methods=['POST'])
 def create_model():
     """API endpoint to create a new AI model"""
-    data = request.json
-    
-    # Validate required fields
-    if not data or not data.get('name'):
-        return jsonify({'success': False, 'error': 'Required fields missing: name is required'}), 400
-    
     try:
+        data = request.json
+        
+        # Validate required fields
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        if not data.get('name'):
+            return jsonify({'success': False, 'error': 'Required fields missing: name is required'}), 400
+        
         # Check if model with this name already exists
         existing_model = AIModel.query.filter_by(name=data['name']).first()
         if existing_model:
@@ -51,38 +61,52 @@ def create_model():
             'message': 'AI model created successfully'
         })
     
-    except Exception as e:
-        logger.error(f"Error creating AI model: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while creating model: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error while creating model: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500
 
 @model_bp.route('/api/models/<int:model_id>', methods=['GET'])
 def get_model(model_id):
     """API endpoint to get details of a specific AI model"""
-    model = AIModel.query.get_or_404(model_id)
-    
-    return jsonify({
-        'success': True,
-        'model': {
-            'id': model.id,
-            'name': model.name,
-            'description': model.description,
-            'link': model.link,
-            'sops': [{
-                'id': sop.id,
-                'name': sop.name,
-                'description': sop.description
-            } for sop in model.sops]
-        }
-    })
+    try:
+        model = AIModel.query.get_or_404(model_id)
+        
+        return jsonify({
+            'success': True,
+            'model': {
+                'id': model.id,
+                'name': model.name,
+                'description': model.description,
+                'link': model.link,
+                'sops': [{
+                    'id': sop.id,
+                    'name': sop.name,
+                    'description': sop.description
+                } for sop in model.sops]
+            }
+        })
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while fetching model {model_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error while fetching model {model_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500
 
 @model_bp.route('/api/models/<int:model_id>', methods=['PUT'])
 def update_model(model_id):
     """API endpoint to update an existing AI model"""
-    model = AIModel.query.get_or_404(model_id)
-    data = request.json
-    
     try:
+        model = AIModel.query.get_or_404(model_id)
+        data = request.json
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided for update'}), 400
+        
         if 'name' in data:
             # Check if new name conflicts with existing model
             existing_model = AIModel.query.filter_by(name=data['name']).first()
@@ -101,17 +125,21 @@ def update_model(model_id):
             'message': 'AI model updated successfully'
         })
     
-    except Exception as e:
-        logger.error(f"Error updating AI model: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while updating model {model_id}: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error while updating model {model_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500
 
 @model_bp.route('/api/models/<int:model_id>', methods=['DELETE'])
 def delete_model(model_id):
     """API endpoint to delete an AI model"""
-    model = AIModel.query.get_or_404(model_id)
-    
     try:
+        model = AIModel.query.get_or_404(model_id)
+        
         # Check if model is being used by any SOPs
         if model.sops:
             return jsonify({
@@ -127,7 +155,11 @@ def delete_model(model_id):
             'message': 'AI model deleted successfully'
         })
     
-    except Exception as e:
-        logger.error(f"Error deleting AI model: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while deleting model {model_id}: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500 
+        return jsonify({'success': False, 'error': 'Database error occurred'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error while deleting model {model_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500 

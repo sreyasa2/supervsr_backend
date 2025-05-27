@@ -67,14 +67,14 @@ def screenshots(app):
             file_name = f"screenshots/{stream.name.replace(' ', '_')}-{int(time.time())}.jpg"
 
             # Upload to GCS
-            ''' try:
+            try:
                 blob = bucket.blob(file_name)
                 blob.upload_from_filename(frame_path)
                 logger.info(f"Uploaded screenshot to GCS: {file_name}")
             except Exception as e:
-                logger.exception(f"Upload failed for {stream.name}: {e}") '''
+                logger.exception(f"Upload failed for {stream.name}: {e}") 
 
-            # Save locally
+            ''' # Save locally
             try:
                 local_dir = os.path.join('uploads', 'screenshots')
                 os.makedirs(local_dir, exist_ok=True)
@@ -82,7 +82,7 @@ def screenshots(app):
                 shutil.copy2(frame_path, local_path)
                 logger.info(f"Saved screenshot locally: {local_path}")
             except Exception as e:
-                logger.exception(f"Local save failed for {stream.name}: {e}")
+                logger.exception(f"Local save failed for {stream.name}: {e}") '''
 
 def register_cron_jobs(scheduler, app):
     # Check if jobs are already registered
