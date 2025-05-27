@@ -1,7 +1,7 @@
 import logging
 import datetime
 from flask import Blueprint, request, jsonify, current_app
-from api.models import AnalysisResult, RTSPStream, SOP
+from api.models import Analysis, RTSPStream, SOP
 from api import db
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -9,68 +9,53 @@ analysis_bp = Blueprint('analysis', __name__)
 logger = logging.getLogger(__name__)
 
 @analysis_bp.route('/api/analysis', methods=['GET'])
-def get_analyses():
-    """API endpoint to list all analysis results"""
+def get_analysis_list():
+    """API endpoint to list all analysis with optional filtering"""
     try:
-        # Get query parameters for filtering
-        rtsp_id = request.args.get('rtsp_id', type=int)
-        sop_id = request.args.get('sop_id', type=int)
+        query = Analysis.query
+        
+        # Filter by start date if provided
         start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Start with base query
-        query = AnalysisResult.query
-        
-        # Apply filters if provided
-        if rtsp_id:
-            query = query.filter_by(rtsp_id=rtsp_id)
-        if sop_id:
-            query = query.filter_by(sop_id=sop_id)
         if start_date:
             try:
-                start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(AnalysisResult.timestamp >= start_date)
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(Analysis.timestamp >= start_date)
             except ValueError:
-                return jsonify({'success': False, 'error': 'Invalid start_date format. Use YYYY-MM-DD'}), 400
+                return jsonify({'success': False, 'error': 'Invalid start date format. Use YYYY-MM-DD'}), 400
+        
+        # Filter by end date if provided
+        end_date = request.args.get('end_date')
         if end_date:
             try:
-                end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d')
-                query = query.filter(AnalysisResult.timestamp <= end_date)
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+                query = query.filter(Analysis.timestamp <= end_date)
             except ValueError:
-                return jsonify({'success': False, 'error': 'Invalid end_date format. Use YYYY-MM-DD'}), 400
+                return jsonify({'success': False, 'error': 'Invalid end date format. Use YYYY-MM-DD'}), 400
         
-        # Order by timestamp descending
-        analyses = query.order_by(AnalysisResult.timestamp.desc()).all()
+        # Get all analysis ordered by timestamp
+        analysis_list = query.order_by(Analysis.timestamp.desc()).all()
         
-        analyses_data = [{
+        analysis_data = [{
             'id': analysis.id,
             'rtsp_id': analysis.rtsp_id,
             'sop_id': analysis.sop_id,
             'timestamp': analysis.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'output': analysis.output,
-            'rtsp_stream': {
-                'id': analysis.rtsp_stream.id,
-                'name': analysis.rtsp_stream.name
-            } if analysis.rtsp_stream else None,
-            'sop': {
-                'id': analysis.sop.id,
-                'name': analysis.sop.name
-            } if analysis.sop else None
-        } for analysis in analyses]
+            'output': analysis.output
+        } for analysis in analysis_list]
         
-        return jsonify({'success': True, 'analyses': analyses_data})
+        return jsonify({'success': True, 'analysis': analysis_data})
     except SQLAlchemyError as e:
-        logger.error(f"Database error while fetching analyses: {str(e)}")
+        logger.error(f"Database error while fetching analysis: {str(e)}")
         return jsonify({'success': False, 'error': 'Database error occurred'}), 500
     except Exception as e:
-        logger.error(f"Unexpected error while fetching analyses: {str(e)}")
+        logger.error(f"Unexpected error while fetching analysis: {str(e)}")
         return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500
 
 @analysis_bp.route('/api/analysis/<int:analysis_id>', methods=['GET'])
 def get_analysis(analysis_id):
-    """API endpoint to get details of a specific analysis result"""
+    """API endpoint to get details of a specific analysis"""
     try:
-        analysis = AnalysisResult.query.get_or_404(analysis_id)
+        analysis = Analysis.query.get_or_404(analysis_id)
         
         return jsonify({
             'success': True,
@@ -79,17 +64,7 @@ def get_analysis(analysis_id):
                 'rtsp_id': analysis.rtsp_id,
                 'sop_id': analysis.sop_id,
                 'timestamp': analysis.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                'output': analysis.output,
-                'rtsp_stream': {
-                    'id': analysis.rtsp_stream.id,
-                    'name': analysis.rtsp_stream.name,
-                    'rtsp_url': analysis.rtsp_stream.rtsp_url
-                } if analysis.rtsp_stream else None,
-                'sop': {
-                    'id': analysis.sop.id,
-                    'name': analysis.sop.name,
-                    'description': analysis.sop.description
-                } if analysis.sop else None
+                'output': analysis.output
             }
         })
     except SQLAlchemyError as e:
@@ -101,7 +76,7 @@ def get_analysis(analysis_id):
 
 @analysis_bp.route('/api/analysis', methods=['POST'])
 def create_analysis():
-    """API endpoint to create a new analysis result"""
+    """API endpoint to create a new analysis"""
     try:
         data = request.json
         
@@ -110,25 +85,15 @@ def create_analysis():
             return jsonify({'success': False, 'error': 'No data provided'}), 400
         if not data.get('rtsp_id'):
             return jsonify({'success': False, 'error': 'Required fields missing: rtsp_id is required'}), 400
-        
-        # Verify RTSP stream exists
-        rtsp_stream = RTSPStream.query.get(data['rtsp_id'])
-        if not rtsp_stream:
-            return jsonify({'success': False, 'error': 'RTSP stream not found'}), 404
-        
-        # Verify SOP exists if provided
-        sop = None
-        if data.get('sop_id'):
-            sop = SOP.query.get(data['sop_id'])
-            if not sop:
-                return jsonify({'success': False, 'error': 'SOP not found'}), 404
+        if not data.get('output'):
+            return jsonify({'success': False, 'error': 'Required fields missing: output is required'}), 400
         
         # Create new analysis record
-        analysis = AnalysisResult(
+        analysis = Analysis(
             rtsp_id=data['rtsp_id'],
             sop_id=data.get('sop_id'),
-            timestamp=datetime.datetime.utcnow(),
-            output=data.get('output', '')
+            timestamp=datetime.now(),
+            output=data['output']
         )
         db.session.add(analysis)
         db.session.commit()
@@ -136,7 +101,7 @@ def create_analysis():
         return jsonify({
             'success': True,
             'analysis_id': analysis.id,
-            'message': 'Analysis result created successfully'
+            'message': 'Analysis created successfully'
         })
     
     except SQLAlchemyError as e:
@@ -150,9 +115,9 @@ def create_analysis():
 
 @analysis_bp.route('/api/analysis/<int:analysis_id>', methods=['PUT'])
 def update_analysis(analysis_id):
-    """API endpoint to update an existing analysis result"""
+    """API endpoint to update an existing analysis"""
     try:
-        analysis = AnalysisResult.query.get_or_404(analysis_id)
+        analysis = Analysis.query.get_or_404(analysis_id)
         data = request.json
         
         if not data:
@@ -161,18 +126,13 @@ def update_analysis(analysis_id):
         if 'output' in data:
             analysis.output = data['output']
         if 'sop_id' in data:
-            # Verify SOP exists if provided
-            if data['sop_id']:
-                sop = SOP.query.get(data['sop_id'])
-                if not sop:
-                    return jsonify({'success': False, 'error': 'SOP not found'}), 404
             analysis.sop_id = data['sop_id']
         
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'Analysis result updated successfully'
+            'message': 'Analysis updated successfully'
         })
     
     except SQLAlchemyError as e:
@@ -186,15 +146,16 @@ def update_analysis(analysis_id):
 
 @analysis_bp.route('/api/analysis/<int:analysis_id>', methods=['DELETE'])
 def delete_analysis(analysis_id):
-    """API endpoint to delete an analysis result"""
+    """API endpoint to delete an analysis"""
     try:
-        analysis = AnalysisResult.query.get_or_404(analysis_id)
+        analysis = Analysis.query.get_or_404(analysis_id)
+        
         db.session.delete(analysis)
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'Analysis result deleted successfully'
+            'message': 'Analysis deleted successfully'
         })
     
     except SQLAlchemyError as e:

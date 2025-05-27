@@ -7,7 +7,7 @@ import sys
 import argparse
 import logging
 from api import create_app
-from api.models import Video, Screenshot, AnalysisResult
+from api.models import Video, Screenshot, Analysis
 from api.services.video_processor import extract_screenshots
 from api.services.gemini_service import analyze_screenshot
 from api import db
@@ -59,7 +59,7 @@ def analyze_screenshots(video_id, app, limit=3):
                 analysis_text = analyze_screenshot(screenshot.file_path)
                 
                 # Create analysis record
-                analysis = AnalysisResult(
+                analysis = Analysis(
                     screenshot_id=screenshot.id,
                     analysis_text=analysis_text
                 )

@@ -6,13 +6,13 @@ class RTSPStream(db.Model):
     __tablename__   = 'rtsp_stream'
 
     id              = db.Column(db.Integer, primary_key=True)
-    rtsp_url        = db.Column(db.String(512), nullable=False, unique=True)
+    rtsp_url        = db.Column(db.String(255), nullable=False)
     description     = db.Column(db.Text)
     name            = db.Column(db.String(255))
-    coco_link       = db.Column(db.String(512))
+    coco_link       = db.Column(db.String(255))
 
     sops            = db.relationship('SOP', secondary='rtsp_sop_association', back_populates='rtsp_streams')
-    analysis        = db.relationship('AnalysisResult', backref='rtsp_stream', lazy=True)
+    analysis        = db.relationship('Analysis', backref='rtsp_stream', lazy=True)
 
 
 class SOP(db.Model):
@@ -25,7 +25,7 @@ class SOP(db.Model):
     prompt          = db.Column(db.Text) 
 
     model           = db.relationship('AIModel', backref='sops', lazy=True)
-    analysis        = db.relationship('AnalysisResult', backref='sop', lazy=True)
+    analysis        = db.relationship('Analysis', backref='sop', lazy=True)
     rtsp_streams    = db.relationship('RTSPStream', secondary='rtsp_sop_association', back_populates='sops')
 
 
@@ -35,10 +35,10 @@ class AIModel(db.Model):
     id              = db.Column(db.Integer, primary_key=True)
     name            = db.Column(db.String(255), nullable=False)
     description     = db.Column(db.Text)
-    link            = db.Column(db.String(512))
+    link            = db.Column(db.String(255))
 
 
-class AnalysisResult(db.Model):
+class Analysis(db.Model):
     __tablename__   = 'analysis'
 
     id              = db.Column(db.Integer, primary_key=True)

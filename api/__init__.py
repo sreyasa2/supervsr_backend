@@ -65,7 +65,7 @@ def create_app(test_config=None):
     }
 
     with app.app_context():
-        from api.models import RTSPStream, SOP, AIModel, AnalysisResult, Organization, User
+        from api.models import RTSPStream, SOP, AIModel, Analysis, Organization, User
         db.create_all()
 
     # Register routes

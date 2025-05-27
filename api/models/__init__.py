@@ -1,2 +1,2 @@
 # Model imports
-from api.models.models import RTSPStream, SOP, AIModel, AnalysisResult, Organization, User
+from api.models.models import RTSPStream, SOP, AIModel, Analysis, Organization, User

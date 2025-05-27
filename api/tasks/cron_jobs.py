@@ -5,6 +5,7 @@ from google.cloud import storage
 import os
 import shutil
 from flask import current_app
+from datetime import datetime
 
 from api.tasks.stream_manager import StreamManager
 
@@ -64,7 +65,9 @@ def screenshots(app):
                 logger.warning(f"No frame available yet for {stream.name}")
                 continue
 
-            file_name = f"screenshots/{stream.name.replace(' ', '_')}-{int(time.time())}.jpg"
+            # Format current time as yy-mm-dd--hour--min--second
+            current_time = datetime.now().strftime('%y-%m-%d--%H--%M--%S')
+            file_name = f"screenshots/{stream.id}-{stream.name.replace(' ', '_')}-{current_time}.jpg"
 
             # Upload to GCS
             try:
@@ -74,7 +77,7 @@ def screenshots(app):
             except Exception as e:
                 logger.exception(f"Upload failed for {stream.name}: {e}") 
 
-            ''' # Save locally
+            # Save locally
             try:
                 local_dir = os.path.join('uploads', 'screenshots')
                 os.makedirs(local_dir, exist_ok=True)
@@ -82,7 +85,7 @@ def screenshots(app):
                 shutil.copy2(frame_path, local_path)
                 logger.info(f"Saved screenshot locally: {local_path}")
             except Exception as e:
-                logger.exception(f"Local save failed for {stream.name}: {e}") '''
+                logger.exception(f"Local save failed for {stream.name}: {e}") 
 
 def register_cron_jobs(scheduler, app):
     # Check if jobs are already registered

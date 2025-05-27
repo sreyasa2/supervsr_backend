@@ -5,7 +5,7 @@ import logging
 import datetime
 import cv2
 from flask import Blueprint, request, jsonify, current_app, abort, send_from_directory
-from api.models import RTSPStream, AnalysisResult
+from api.models import RTSPStream
 from api import db
 from sqlalchemy.exc import SQLAlchemyError
 

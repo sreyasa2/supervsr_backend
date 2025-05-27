@@ -1,7 +1,7 @@
 import logging
 import datetime
 from flask import Blueprint, request, jsonify, current_app
-from api.models import SOP
+from api.models import SOP, AIModel
 from api import db
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -12,15 +12,14 @@ logger = logging.getLogger(__name__)
 def get_sops():
     """API endpoint to list all SOPs"""
     try:
-        sops = SOP.query.order_by(SOP.created_at.desc()).all()
+        sops = SOP.query.all()
         sops_data = [{
             'id': sop.id,
-            'title': sop.title,
+            'name': sop.name,
             'description': sop.description,
-            'category': sop.category,
-            'status': sop.status,
-            'created_at': sop.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': sop.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            'model_id': sop.model_id,
+            'prompt': sop.prompt,
+            'model': sop.model.name if sop.model else None
         } for sop in sops]
         
         return jsonify({'success': True, 'sops': sops_data})
@@ -37,17 +36,16 @@ def create_sop():
     data = request.json
     
     # Validate required fields
-    if not data or not data.get('title'):
-        return jsonify({'success': False, 'error': 'Required fields missing: title is required'}), 400
+    if not data or not data.get('name'):
+        return jsonify({'success': False, 'error': 'Required fields missing: name is required'}), 400
     
     try:
         # Create new SOP record
         sop = SOP(
-            title=data.get('title'),
+            name=data.get('name'),
             description=data.get('description', ''),
-            category=data.get('category', 'general'),
-            status='active',
-            content=data.get('content', '')
+            model_id=data.get('model_id'),
+            prompt=data.get('prompt', '')
         )
         db.session.add(sop)
         db.session.commit()
@@ -72,13 +70,12 @@ def get_sop(sop_id):
             'success': True,
             'sop': {
                 'id': sop.id,
-                'title': sop.title,
+                'name': sop.name,
                 'description': sop.description,
-                'category': sop.category,
-                'status': sop.status,
-                'content': sop.content,
-                'created_at': sop.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'updated_at': sop.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                'model_id': sop.model_id,
+                'prompt': sop.prompt,
+                'model': sop.model.name if sop.model else None,
+                'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams]
             }
         })
     except SQLAlchemyError as e:
@@ -98,18 +95,15 @@ def update_sop(sop_id):
         if not data:
             return jsonify({'success': False, 'error': 'No data provided for update'}), 400
             
-        if 'title' in data:
-            sop.title = data['title']
+        if 'name' in data:
+            sop.name = data['name']
         if 'description' in data:
             sop.description = data['description']
-        if 'category' in data:
-            sop.category = data['category']
-        if 'status' in data:
-            sop.status = data['status']
-        if 'content' in data:
-            sop.content = data['content']
+        if 'model_id' in data:
+            sop.model_id = data['model_id']
+        if 'prompt' in data:
+            sop.prompt = data['prompt']
         
-        sop.updated_at = datetime.datetime.utcnow()
         db.session.commit()
         
         return jsonify({
