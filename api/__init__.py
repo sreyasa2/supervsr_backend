@@ -5,6 +5,7 @@ from api import tasks
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_cors import CORS
 from sqlalchemy.orm import DeclarativeBase
 from apscheduler.schedulers.background import BackgroundScheduler
 from api.tasks.cron_jobs import register_cron_jobs  
@@ -30,6 +31,9 @@ def start_scheduler(app):
 def create_app(test_config=None):
     """Create and configure the Flask application"""
     app = Flask(__name__, instance_relative_config=True)
+    
+    # Enable CORS
+    CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
     
     # Load configuration
     if test_config is None:
