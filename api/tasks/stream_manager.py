@@ -70,7 +70,7 @@ class StreamManager:
             '-c:v', 'copy',  # Copy video stream without re-encoding
             '-c:a', 'aac',   # Convert audio to AAC
             '-f', 'hls',
-            '-hls_time', '2',  # 2 second segments
+            '-hls_time', '10',  # 10 second segments to match screenshot interval
             '-hls_list_size', '5',  # Keep 5 segments
             '-hls_flags', 'delete_segments',  # Delete old segments
             '-hls_segment_type', 'mpegts',  # Use MPEG-TS segments
@@ -108,55 +108,19 @@ class StreamManager:
         return self.stream_status.get(stream_id, {"status": "unknown", "error": None})
 
     def get_latest_frame(self, stream_id):
-        """Get the latest frame from the HLS stream"""
-        if stream_id not in self.streams:
+        """Get the path to the latest frame from the HLS stream"""
+        if stream_id not in self.temp_dirs:
             return None
-
-        status = self.get_stream_status(stream_id)
-        if status["status"] != "running":
-            logger.warning(f"Stream {stream_id} not running (status: {status['status']})")
-            return None
-
+            
         temp_dir = self.temp_dirs[stream_id]
-        frame_path = os.path.join(temp_dir, 'frame.jpg')
+        segments = [f for f in os.listdir(temp_dir) if f.endswith('.ts')]
         
-        # Get the latest segment
-        segments = sorted([f for f in os.listdir(temp_dir) if f.startswith('segment_') and f.endswith('.ts')])
         if not segments:
-            logger.error(f"No segments available for stream {stream_id}")
             return None
             
-        latest_segment = os.path.join(temp_dir, segments[-1])
-        logger.debug(f"Processing segment: {latest_segment}")
-        
-        # Extract frame from latest segment
-        ffmpeg_cmd = [
-            'ffmpeg',
-            '-i', latest_segment,
-            '-vframes', '1',
-            '-y',
-            frame_path
-        ]
-        
-        try:
-            process = subprocess.run(
-                ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=5
-            )
-            
-            if process.returncode == 0 and os.path.exists(frame_path):
-                logger.debug(f"Successfully extracted frame from {latest_segment}")
-                return frame_path
-            else:
-                stderr = process.stderr.decode() if process.stderr else "No error output"
-                logger.error(f"Failed to extract frame for stream {stream_id}. FFmpeg error: {stderr}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error extracting frame for stream {stream_id}: {e}")
-            return None
+        # Get the most recent segment
+        latest_segment = sorted(segments)[-1]
+        return os.path.join(temp_dir, latest_segment)
 
     def stop_stream(self, stream_id):
         # Stop FFmpeg process
