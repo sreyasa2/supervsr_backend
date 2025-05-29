@@ -1,10 +1,9 @@
 import logging
-from google.cloud import storage
-from datetime import datetime
 import os
+from typing import List
 from dotenv import load_dotenv
+from google.cloud import storage
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,7 @@ class GCSUtils:
             logger.exception(f"Upload failed for {destination_blob_name}: {e}")
             return False
     
-    def get_recent_screenshot_urls(self, stream_id: str, count: int) -> list[str]:
+    def get_recent_screenshot_urls(self, stream_id: str, count: int) -> List[str]:
         """
         Get the most recent screenshot URLs for a stream from GCS.
         
@@ -52,14 +51,9 @@ class GCSUtils:
             List of GCS URLs for the screenshots
         """
         try:
-            # List all blobs in the screenshots folder
             blobs = list(self.bucket.list_blobs(prefix=f"screenshots/{stream_id}-"))
-            
-            # Sort by creation time (newest first) and take the most recent ones
             recent_blobs = sorted(blobs, key=lambda x: x.time_created, reverse=True)[:count]
-            
-            # Get public URLs for each blob
             return [blob.public_url for blob in recent_blobs]
         except Exception as e:
             logger.exception(f"Failed to get screenshot URLs for stream {stream_id}: {e}")
-            return [] 
+            return []

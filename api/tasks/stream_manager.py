@@ -1,5 +1,3 @@
-# tasks/stream_manager.py
-
 import logging
 import subprocess
 import os
@@ -8,141 +6,189 @@ import atexit
 import tempfile
 import shutil
 import time
-import json
+import threading
+from collections import deque
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class StreamManager:
-    def __init__(self):
-        self.streams = {}       # stream_id -> rtsp_url
-        self.temp_dirs = {}     # stream_id -> temp directory
-        self.processes = {}     # stream_id -> subprocess.Popen
-        self.stream_status = {} # stream_id -> status info
-        
-        # Register cleanup on exit
+    """
+    Manages RTSP-to-HLS streaming processes via FFmpeg, with thread-safe
+    state management and cleaned-up resource handling.
+    """
+
+    # Configurable parameters
+    HLS_SEGMENT_TIME = 2             # seconds per HLS segment
+    HLS_LIST_SIZE = 5                # number of segments in playlist
+    PROBE_SIZE = 5_000_000           # bytes to probe input stream
+    ANALYZE_DURATION = 5_000_000     # microseconds to analyze input
+    TIMEOUT_USEC = 5_000_000         # socket I/O timeout in microseconds
+    LOG_HISTORY_SIZE = 100           # number of stderr lines to keep
+    VERIFY_TIMEOUT = 10              # seconds to wait for HLS readiness
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.streams: Dict[str, str] = {}                # stream_id -> rtsp_url
+        self.temp_dirs: Dict[str, str] = {}              # stream_id -> temp directory
+        self.processes: Dict[str, subprocess.Popen] = {} # stream_id -> process
+        self.status: Dict[str, Dict[str, Any]] = {}      # stream_id -> {status, error}
+        self.ffmpeg_logs: Dict[str, deque] = {}          # stream_id -> recent stderr lines
         atexit.register(self.stop_all)
 
-    def _verify_hls_stream(self, stream_id, playlist_path, max_retries=3):
-        """Verify HLS stream is working by checking playlist and segments"""
-        for attempt in range(max_retries):
-            if not os.path.exists(playlist_path):
-                time.sleep(2)
-                continue
+    def _log_ffmpeg(self, process: subprocess.Popen, stream_id: str) -> None:
+        def reader():
+            while True:
+                line = process.stderr.readline()
+                if not line:
+                    break
+                text = line.strip()
+                with self._lock:
+                    dq = self.ffmpeg_logs.setdefault(stream_id, deque(maxlen=self.LOG_HISTORY_SIZE))
+                    dq.append(text)
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
 
-            # Check if segments are being created
-            segments = [f for f in os.listdir(os.path.dirname(playlist_path)) if f.endswith('.ts')]
-            if not segments:
-                time.sleep(2)
-                continue
+    def _launch_ffmpeg(self, stream_id: str, rtsp_url: str, output_dir: str) -> None:
+        playlist = os.path.join(output_dir, 'playlist.m3u8')
+        cmd = [
+            'ffmpeg',
+            '-probesize', str(self.PROBE_SIZE),
+            '-analyzeduration', str(self.ANALYZE_DURATION),
+            '-rtsp_transport', 'tcp',
+            '-timeout', str(self.TIMEOUT_USEC),
+            '-i', rtsp_url,
+            '-c:v', 'copy',
+            '-bsf:v', 'hevc_mp4toannexb',
+            '-tag:v', 'hvc1',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-f', 'hls',
+            '-hls_time', str(self.HLS_SEGMENT_TIME),
+            '-hls_list_size', str(self.HLS_LIST_SIZE),
+            '-hls_flags', 'delete_segments+append_list+independent_segments',
+            '-hls_allow_cache', '0',
+            '-hls_segment_filename', os.path.join(output_dir, 'seg%03d.ts'),
+            '-fflags', '+nobuffer+genpts',
+            '-flags', 'low_delay',
+            '-max_delay', '500000',
+            '-start_at_zero',
+            '-y',
+            playlist
+        ]
+        creationflags = 0
+        if os.name == 'nt':
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=1,
+            universal_newlines=True,
+            preexec_fn=(os.setsid if os.name != 'nt' else None),
+            creationflags=creationflags
+        )
+        with self._lock:
+            self.processes[stream_id] = proc
+            self.ffmpeg_logs[stream_id] = deque(maxlen=self.LOG_HISTORY_SIZE)
+        self._log_ffmpeg(proc, stream_id)
 
-            # Try to read the playlist
+    def _verify_hls(self, stream_id: str, output_dir: str, timeout: int) -> bool:
+        playlist = os.path.join(output_dir, 'playlist.m3u8')
+        end = time.time() + timeout
+        while time.time() < end:
+            if not os.path.exists(playlist):
+                time.sleep(0.5)
+                continue
             try:
-                with open(playlist_path, 'r') as f:
-                    content = f.read()
-                    if '#EXTM3U' in content and len(segments) > 0:
-                        return True
-            except Exception as e:
-                logger.error(f"Error reading playlist for {stream_id}: {e}")
-
-            time.sleep(2)
-
+                files = os.listdir(output_dir)
+                ts = [f for f in files if f.endswith('.ts')]
+                if not ts:
+                    time.sleep(0.5)
+                    continue
+                with open(playlist, 'r') as f:
+                    data = f.read()
+                if data.startswith('#EXTM3U'):
+                    return True
+            except Exception:
+                time.sleep(0.5)
         return False
 
-    def start_stream(self, stream_id, rtsp_url):
-        if stream_id in self.streams:
-            return
-
-        # Create temp directory for this stream
-        temp_dir = tempfile.mkdtemp(prefix=f'stream_{stream_id}_')
-        self.temp_dirs[stream_id] = temp_dir
-        self.streams[stream_id] = rtsp_url
-        self.stream_status[stream_id] = {"status": "initializing", "error": None}
-
-        # Start FFmpeg process to convert RTSP to HLS
-        playlist_path = os.path.join(temp_dir, 'playlist.m3u8')
-        ffmpeg_cmd = [
-            'ffmpeg',
-            '-i', rtsp_url,
-            '-c:v', 'copy',  # Copy video stream without re-encoding
-            '-c:a', 'aac',   # Convert audio to AAC
-            '-f', 'hls',
-            '-hls_time', '10',  # 10 second segments to match screenshot interval
-            '-hls_list_size', '5',  # Keep 5 segments
-            '-hls_flags', 'delete_segments',  # Delete old segments
-            '-hls_segment_type', 'mpegts',  # Use MPEG-TS segments
-            '-hls_allow_cache', '0',  # Disable caching
-            '-hls_segment_filename', os.path.join(temp_dir, 'segment_%03d.ts'),  # Consistent segment naming
-            playlist_path
-        ]
-        
+    def start_stream(self, stream_id: str, rtsp_url: str) -> bool:
+        with self._lock:
+            if stream_id in self.streams:
+                return False
+            self.streams[stream_id] = rtsp_url
+            self.status[stream_id] = {"status": "init", "error": None}
+        temp = tempfile.mkdtemp(prefix=f"stream_{stream_id}_")
+        with self._lock:
+            self.temp_dirs[stream_id] = temp
         try:
-            process = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                preexec_fn=os.setsid
-            )
-            self.processes[stream_id] = process
-            
-            # Wait for HLS stream to be ready
-            if self._verify_hls_stream(stream_id, playlist_path):
-                self.stream_status[stream_id] = {"status": "running", "error": None}
-                return True
-            else:
-                raise Exception("Failed to verify HLS stream")
-            
-        except Exception as e:
-            error_msg = f"Failed to start HLS stream for {stream_id}: {e}"
-            logger.error(error_msg)
-            self.stream_status[stream_id] = {"status": "error", "error": str(e)}
+            self._launch_ffmpeg(stream_id, rtsp_url, temp)
+        except OSError as e:
+            with self._lock:
+                self.status[stream_id] = {"status": "error", "error": str(e)}
             self.stop_stream(stream_id)
             return False
-
-    def get_stream_status(self, stream_id):
-        """Get the current status of a stream"""
-        return self.stream_status.get(stream_id, {"status": "unknown", "error": None})
-
-    def get_latest_frame(self, stream_id):
-        """Get the path to the latest frame from the HLS stream"""
-        if stream_id not in self.temp_dirs:
-            return None
-            
-        temp_dir = self.temp_dirs[stream_id]
-        segments = [f for f in os.listdir(temp_dir) if f.endswith('.ts')]
-        
-        if not segments:
-            return None
-            
-        # Get the most recent segment
-        latest_segment = sorted(segments)[-1]
-        return os.path.join(temp_dir, latest_segment)
-
-    def stop_stream(self, stream_id):
-        # Stop FFmpeg process
-        if stream_id in self.processes:
-            process = self.processes[stream_id]
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            except:
-                process.terminate()
-            del self.processes[stream_id]
-        
-        # Clean up temp directory
-        if stream_id in self.temp_dirs:
-            try:
-                shutil.rmtree(self.temp_dirs[stream_id])
-            except Exception as e:
-                logger.error(f"Failed to clean up temp directory for stream {stream_id}: {e}")
-            del self.temp_dirs[stream_id]
-            
-        if stream_id in self.streams:
-            del self.streams[stream_id]
-            
-        if stream_id in self.stream_status:
-            del self.stream_status[stream_id]
-            
-        logger.info(f"Stopped stream {stream_id}")
-
-    def stop_all(self):
-        for stream_id in list(self.streams.keys()):
+        if not self._verify_hls(stream_id, temp, self.VERIFY_TIMEOUT):
+            with self._lock:
+                self.status[stream_id] = {"status": "error", "error": "HLS setup timeout"}
             self.stop_stream(stream_id)
+            return False
+        with self._lock:
+            self.status[stream_id] = {"status": "running", "error": None}
+        return True
+
+    def get_stream_status(self, stream_id: str) -> Dict[str, Any]:
+        with self._lock:
+            if stream_id not in self.status:
+                return {"status": "unknown", "error": "not found"}
+            stat = self.status[stream_id].copy()
+            proc = self.processes.get(stream_id)
+        if proc and proc.poll() is not None:
+            logs = list(self.ffmpeg_logs.get(stream_id, []))[-5:]
+            stat = {"status": "error", "error": f"Process exited. Logs: {logs}"}
+            self.stop_stream(stream_id)
+        return stat
+
+    def get_latest_frame(self, stream_id: str) -> Optional[str]:
+        with self._lock:
+            d = self.temp_dirs.get(stream_id)
+        if not d or not os.path.isdir(d):
+            return None
+        ts = [f for f in os.listdir(d) if f.endswith('.ts')]
+        if not ts:
+            return None
+        seg = os.path.join(d, sorted(ts)[-1])
+        out = os.path.join(d, f"{stream_id}_latest.jpg")
+        cmd = ['ffmpeg', '-i', seg, '-frames:v', '1', '-q:v', '2', out, '-y']
+        try:
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            return out
+        except subprocess.CalledProcessError:
+            return None
+
+    def stop_stream(self, stream_id: str) -> None:
+        with self._lock:
+            proc = self.processes.pop(stream_id, None)
+            temp = self.temp_dirs.pop(stream_id, None)
+            self.streams.pop(stream_id, None)
+            self.status.pop(stream_id, None)
+            self.ffmpeg_logs.pop(stream_id, None)
+        if proc:
+            try:
+                if os.name != 'nt':
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                else:
+                    proc.send_signal(signal.CTRL_BREAK_EVENT)
+                proc.wait(5)
+            except Exception:
+                proc.kill()
+        if temp and os.path.isdir(temp):
+            shutil.rmtree(temp, ignore_errors=True)
+
+    def stop_all(self) -> None:
+        with self._lock:
+            ids = list(self.streams.keys())
+        for sid in ids:
+            self.stop_stream(sid)

@@ -3,7 +3,6 @@ import os
 import shutil
 from datetime import datetime
 from collections import defaultdict
-from typing import Optional
 from urllib.parse import urlparse
 
 from api.utils.gcs_utils import GCSUtils
@@ -38,6 +37,10 @@ class ScreenshotProcessor:
         Returns:
             bool: True if processing was successful
         """
+        if not os.path.exists(frame_path):
+            logger.error(f"Frame path does not exist: {frame_path}")
+            return False
+            
         try:
             # Validate grid dimensions
             if grid_rows * grid_cols != self.screenshots_per_grid:
@@ -50,6 +53,7 @@ class ScreenshotProcessor:
             
             # Upload to GCS
             if not self.gcs_utils.upload_file(frame_path, file_name):
+                logger.error(f"Failed to upload screenshot to GCS: {file_name}")
                 return False
             
             # Save locally
@@ -62,7 +66,10 @@ class ScreenshotProcessor:
             # Increment counter and check if we need to create a grid
             self.screenshot_counts[stream_id] += 1
             if self.screenshot_counts[stream_id] >= self.screenshots_per_grid:
-                self._create_grid(stream_id, stream_name, grid_rows, grid_cols)
+                success = self._create_grid(stream_id, stream_name, grid_rows, grid_cols)
+                if not success:
+                    logger.error(f"Failed to create grid for stream {stream_name}")
+                    return False
             
             return True
             
@@ -113,4 +120,4 @@ class ScreenshotProcessor:
             
         except Exception as e:
             logger.exception(f"Grid creation failed for {stream_name}: {e}")
-            return False 
+            return False
