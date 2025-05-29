@@ -33,7 +33,6 @@ def initialize_streams(app):
     with app.app_context():
         streams = RTSPStream.query.all()
         for stream in streams:
-            logger.info(f"Initializing stream: {stream.name}")
             success = stream_manager.start_stream(stream.id, stream.rtsp_url)
             if not success:
                 logger.error(f"Failed to initialize stream: {stream.name}")
@@ -51,7 +50,7 @@ def verify_streams(app):
         for stream in streams:
             status = stream_manager.get_stream_status(stream.id)
             if status["status"] != "running":
-                logger.warning(f"Stream {stream.name} not running (status: {status['status']}), attempting restart")
+                logger.error(f"Stream {stream.name} not running (status: {status['status']}), attempting restart")
                 stream_manager.stop_stream(stream.id)
                 time.sleep(2)
                 stream_manager.start_stream(stream.id, stream.rtsp_url)
@@ -80,18 +79,15 @@ def screenshots(app):
     """Capture latest frame from memory and upload every 10 seconds"""
     from api.models import RTSPStream
     with app.app_context():
-        logger.info("Scheduled screenshot job triggered")
-
         streams = RTSPStream.query.all()
         for stream in streams:
             status = stream_manager.get_stream_status(stream.id)
             if status["status"] != "running":
-                logger.warning(f"Skipping screenshot for {stream.name} - stream not running (status: {status['status']})")
+                logger.error(f"Skipping screenshot for {stream.name} - stream not running (status: {status['status']})")
                 continue
 
             frame_path = stream_manager.get_latest_frame(stream.id)
             if frame_path is None:
-                logger.warning(f"No frame available yet for {stream.name}")
                 continue
 
             # Process the screenshot with grid dimensions
@@ -107,7 +103,6 @@ def register_cron_jobs(scheduler, app):
     # Check if jobs are already registered
     existing_jobs = scheduler.get_jobs()
     if any(job.id == 'screenshots' for job in existing_jobs):
-        logger.info("Screenshot job already registered")
         return
         
     initialize_streams(app)  # Start streams at scheduler startup
