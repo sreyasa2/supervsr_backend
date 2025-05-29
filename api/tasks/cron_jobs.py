@@ -20,8 +20,8 @@ gcs_utils = GCSUtils()
 stream_manager = StreamManager()
 
 # Get grid dimensions from environment variables with defaults
-GRID_ROWS = int(os.getenv('GRID_ROWS', '2'))
-GRID_COLS = int(os.getenv('GRID_COLS', '3'))
+GRID_ROWS = 2
+GRID_COLS = 3
 screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
 
 # Track screenshot counts for each stream
