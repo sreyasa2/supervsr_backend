@@ -26,14 +26,12 @@ class StreamManager:
         """Verify HLS stream is working by checking playlist and segments"""
         for attempt in range(max_retries):
             if not os.path.exists(playlist_path):
-                logger.warning(f"Attempt {attempt + 1}: Playlist not found for {stream_id}")
                 time.sleep(2)
                 continue
 
             # Check if segments are being created
             segments = [f for f in os.listdir(os.path.dirname(playlist_path)) if f.endswith('.ts')]
             if not segments:
-                logger.warning(f"Attempt {attempt + 1}: No segments found for {stream_id}")
                 time.sleep(2)
                 continue
 
@@ -42,7 +40,6 @@ class StreamManager:
                 with open(playlist_path, 'r') as f:
                     content = f.read()
                     if '#EXTM3U' in content and len(segments) > 0:
-                        logger.info(f"HLS stream verified for {stream_id}")
                         return True
             except Exception as e:
                 logger.error(f"Error reading playlist for {stream_id}: {e}")
@@ -53,7 +50,6 @@ class StreamManager:
 
     def start_stream(self, stream_id, rtsp_url):
         if stream_id in self.streams:
-            logger.info(f"Stream {stream_id} already running.")
             return
 
         # Create temp directory for this stream
@@ -91,7 +87,6 @@ class StreamManager:
             # Wait for HLS stream to be ready
             if self._verify_hls_stream(stream_id, playlist_path):
                 self.stream_status[stream_id] = {"status": "running", "error": None}
-                logger.info(f"Started HLS stream for {stream_id}")
                 return True
             else:
                 raise Exception("Failed to verify HLS stream")

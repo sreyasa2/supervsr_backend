@@ -11,7 +11,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from api.tasks.cron_jobs import register_cron_jobs  
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.WARNING,  # Only show WARNING and above
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize database
@@ -25,7 +28,7 @@ def start_scheduler(app):
     scheduler = BackgroundScheduler()
     register_cron_jobs(scheduler, app)
     scheduler.start()
-    logger.info("APScheduler with RTSP job and stream manager started.")
+    logger.warning("Scheduler started")  # Changed to warning level
     return scheduler
 
 def create_app(test_config=None):
@@ -33,7 +36,7 @@ def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     
     # Enable CORS
-    CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
+    CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://127.0.0.1:8080"]}}, supports_credentials=True)
     
     # Load configuration
     if test_config is None:
@@ -128,5 +131,5 @@ def create_app(test_config=None):
             }
         })
 
-    logger.info("Application initialized successfully")
+    logger.warning("Application initialized")  # Changed to warning level
     return app
