@@ -249,13 +249,7 @@ def delete_stream(stream_id):
     try:
         stream = RTSPStream.query.get_or_404(stream_id)
         
-        # Check if stream is being used by any SOPs
-        if stream.sops:
-            return jsonify({
-                'success': False,
-                'error': 'Cannot delete stream that is being used by SOPs. Please update or delete the associated SOPs first.'
-            }), 409
-        
+        # Delete the stream - cascade will handle associated records
         db.session.delete(stream)
         db.session.commit()
         

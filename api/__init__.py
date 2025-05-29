@@ -84,8 +84,8 @@ def create_app(test_config=None):
     app.register_blueprint(relationship_bp)
 
     # Start scheduler
-    scheduler = start_scheduler(app)
-    atexit.register(lambda: scheduler.shutdown())
+    '''scheduler = start_scheduler(app)
+    atexit.register(lambda: scheduler.shutdown())'''
 
     # Health check route
     @app.route('/health')
