@@ -11,7 +11,7 @@ class RTSPStream(db.Model):
     name            = db.Column(db.String(255))
     coco_link       = db.Column(db.String(255))
 
-    sops            = db.relationship('SOP', secondary='rtsp_sop_association', back_populates='rtsp_streams', cascade='all, delete-orphan')
+    sops            = db.relationship('SOP', secondary='rtsp_sop_association', back_populates='rtsp_streams')
     analysis        = db.relationship('Analysis', backref='rtsp_stream', lazy=True, cascade='all, delete-orphan')
 
 
@@ -26,7 +26,7 @@ class SOP(db.Model):
 
     model           = db.relationship('AIModel', backref='sops', lazy=True)
     analysis        = db.relationship('Analysis', backref='sop', lazy=True, cascade='all, delete-orphan')
-    rtsp_streams    = db.relationship('RTSPStream', secondary='rtsp_sop_association', back_populates='sops', cascade='all, delete-orphan')
+    rtsp_streams    = db.relationship('RTSPStream', secondary='rtsp_sop_association', back_populates='sops')
 
 
 class AIModel(db.Model):
@@ -71,6 +71,6 @@ class User(db.Model):
 
 rtsp_sop_association = db.Table(
     'rtsp_sop_association',
-    db.Column('rtsp_id', db.Integer, db.ForeignKey('rtsp_stream.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('sop_id', db.Integer, db.ForeignKey('sop.id', ondelete='CASCADE'), primary_key=True)
+    db.Column('rtsp_id', db.Integer, db.ForeignKey('rtsp_stream.id'), primary_key=True),
+    db.Column('sop_id', db.Integer, db.ForeignKey('sop.id'), primary_key=True)
 )
