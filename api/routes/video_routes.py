@@ -174,6 +174,7 @@ def update_stream(stream_id):
     """API endpoint to update a specific RTSP stream"""
     try:
         stream = RTSPStream.query.get_or_404(stream_id)
+        logger.info(f"Fetching stream {stream}")
         data = request.json
         
         logger.info(f"Updating stream {stream_id} with data: {data}")
@@ -229,7 +230,7 @@ def update_stream(stream_id):
                 'rtsp_url': stream.rtsp_url,
                 'description': stream.description,
                 'coco_link': stream.coco_link,
-                'sops': [sop.id for sop in stream.sops]
+                'sops': [{'id': sop.id, 'name': sop.name} for sop in stream.sops]
             }
         })
     

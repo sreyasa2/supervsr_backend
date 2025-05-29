@@ -1,7 +1,7 @@
 import logging
 import datetime
 from flask import Blueprint, request, jsonify, current_app
-from api.models import SOP, AIModel
+from api.models import SOP, AIModel, RTSPStream
 from api import db
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -103,12 +103,41 @@ def update_sop(sop_id):
             sop.model_id = data['model_id']
         if 'prompt' in data:
             sop.prompt = data['prompt']
+            
+        # Handle RTSP stream updates
+        if 'rtsp_streams' in data:
+            logger.info(f"Updating RTSP streams for SOP {sop_id}. Current streams: {[stream.id for stream in sop.rtsp_streams]}")
+            logger.info(f"New stream IDs: {data['rtsp_streams']}")
+            
+            # Clear existing streams if provided
+            if data['rtsp_streams'] is None:
+                sop.rtsp_streams = []
+            else:
+                # Validate that all stream IDs exist
+                stream_ids = data['rtsp_streams']
+                streams = RTSPStream.query.filter(RTSPStream.id.in_(stream_ids)).all()
+                logger.info(f"Found streams in database: {[stream.id for stream in streams]}")
+                
+                if len(streams) != len(stream_ids):
+                    logger.error(f"Invalid stream IDs. Requested: {stream_ids}, Found: {[stream.id for stream in streams]}")
+                    return jsonify({'success': False, 'error': 'One or more stream IDs are invalid'}), 400
+                
+                sop.rtsp_streams = streams
+                logger.info(f"Updated SOP streams to: {[stream.id for stream in sop.rtsp_streams]}")
         
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'SOP updated successfully'
+            'message': 'SOP updated successfully',
+            'sop': {
+                'id': sop.id,
+                'name': sop.name,
+                'description': sop.description,
+                'model_id': sop.model_id,
+                'prompt': sop.prompt,
+                'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams]
+            }
         })
     
     except SQLAlchemyError as e:

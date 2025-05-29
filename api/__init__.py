@@ -76,11 +76,12 @@ def create_app(test_config=None):
         db.create_all()
 
     # Register routes
-    from api.routes import video_bp, sop_bp, analysis_bp, model_bp
+    from api.routes import video_bp, sop_bp, analysis_bp, model_bp, relationship_bp
     app.register_blueprint(video_bp)
     app.register_blueprint(sop_bp)
     app.register_blueprint(analysis_bp)
     app.register_blueprint(model_bp)
+    app.register_blueprint(relationship_bp)
 
     # Start scheduler
     scheduler = start_scheduler(app)
