@@ -5,7 +5,7 @@ import logging
 import datetime
 import cv2
 from flask import Blueprint, request, jsonify, current_app, abort, send_from_directory
-from api.models import RTSPStream
+from api.models import RTSPStream, SOP
 from api import db
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -176,6 +176,8 @@ def update_stream(stream_id):
         stream = RTSPStream.query.get_or_404(stream_id)
         data = request.json
         
+        logger.info(f"Updating stream {stream_id} with data: {data}")
+        
         if not data:
             return jsonify({'success': False, 'error': 'No data provided for update'}), 400
         
@@ -194,7 +196,29 @@ def update_stream(stream_id):
                 return jsonify({'success': False, 'error': 'RTSP stream with this URL already exists'}), 409
             stream.rtsp_url = data['rtsp_url']
         
+        # Handle SOP updates
+        if 'sops' in data:
+            logger.info(f"Updating SOPs for stream {stream_id}. Current SOPs: {[sop.id for sop in stream.sops]}")
+            logger.info(f"New SOP IDs: {data['sops']}")
+            
+            # Clear existing SOPs if provided
+            if data['sops'] is None:
+                stream.sops = []
+            else:
+                # Validate that all SOP IDs exist
+                sop_ids = data['sops']
+                sops = SOP.query.filter(SOP.id.in_(sop_ids)).all()
+                logger.info(f"Found SOPs in database: {[sop.id for sop in sops]}")
+                
+                if len(sops) != len(sop_ids):
+                    logger.error(f"Invalid SOP IDs. Requested: {sop_ids}, Found: {[sop.id for sop in sops]}")
+                    return jsonify({'success': False, 'error': 'One or more SOP IDs are invalid'}), 400
+                
+                stream.sops = sops
+                logger.info(f"Updated stream SOPs to: {[sop.id for sop in stream.sops]}")
+        
         db.session.commit()
+        logger.info(f"Successfully updated stream {stream_id}")
         
         return jsonify({
             'success': True,
@@ -204,7 +228,8 @@ def update_stream(stream_id):
                 'name': stream.name,
                 'rtsp_url': stream.rtsp_url,
                 'description': stream.description,
-                'coco_link': stream.coco_link
+                'coco_link': stream.coco_link,
+                'sops': [sop.id for sop in stream.sops]
             }
         })
     
