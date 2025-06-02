@@ -76,8 +76,16 @@ def create_model():
 def get_model(model_id):
     """API endpoint to get details of a specific AI model"""
     try:
-        model = AIModel.query.get_or_404(model_id)
-        
+        model = AIModel.query.get(model_id)
+        if not model:
+            return jsonify({
+                'success': False,
+                'error': f'Model with ID {model_id} not found'
+            }), 404
+
+        # Get all SOPs that use this model
+        sops = SOP.query.filter_by(model_id=model_id).all()
+
         return jsonify({
             'success': True,
             'model': {
@@ -90,7 +98,8 @@ def get_model(model_id):
                     'id': sop.id,
                     'name': sop.name,
                     'description': sop.description
-                } for sop in model.sops]
+                } for sop in sops],
+                'type': model.type
             }
         })
     except SQLAlchemyError as e:
@@ -144,7 +153,8 @@ def delete_model(model_id):
         model = AIModel.query.get_or_404(model_id)
         
         # Check if model is being used by any SOPs
-        if model.sops:
+        sops_using_model = SOP.query.filter_by(model_id=model_id).first()
+        if sops_using_model:
             return jsonify({
                 'success': False,
                 'error': 'Cannot delete model that is being used by SOPs. Please update or delete the associated SOPs first.'
@@ -165,4 +175,4 @@ def delete_model(model_id):
     except Exception as e:
         logger.error(f"Unexpected error while deleting model {model_id}: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500 
+        return jsonify({'success': False, 'error': 'An unexpected error occurred'}), 500

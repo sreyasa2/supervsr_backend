@@ -55,7 +55,8 @@ def create_sop():
         return jsonify({
             'success': True,
             'sop_id': sop.id,
-            'message': 'SOP created successfully'
+            'message': 'SOP created successfully',
+            'frequency': sop.frequency
         })
     
     except Exception as e:
@@ -78,7 +79,8 @@ def get_sop(sop_id):
                 'prompt': sop.prompt,
                 'frequency': sop.frequency,
                 'model': sop.model.name if sop.model else None,
-                'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams]
+                'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams],
+                'frequency': sop.frequency
             }
         })
     except SQLAlchemyError as e:
