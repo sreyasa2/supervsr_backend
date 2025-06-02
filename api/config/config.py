@@ -20,12 +20,8 @@ class Config:
     
     # Gemini AI settings
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-    GEMINI_MODEL_NAME = "gemini-pro-vision"
+    GEMINI_MODEL_NAME = "gemini-2.0-flash"
     
-    # Video processing settings
-    SCREENSHOT_INTERVAL = 5  # Take a screenshot every 5 seconds
-    MAX_SCREENSHOTS_PER_VIDEO = 20  # Maximum number of screenshots to process per video
-
 
 class DevelopmentConfig(Config):
     """Development configuration"""

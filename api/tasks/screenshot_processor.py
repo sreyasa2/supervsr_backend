@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from api.utils.gcs_utils import GCSUtils
 from api.tasks.stitcher import process_images
+from api.services.gemini_service import analyze_screenshot_structured
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,41 @@ class ScreenshotProcessor:
         self.gcs_utils = gcs_utils
         self.screenshots_per_grid = screenshots_per_grid
         self.screenshot_counts = defaultdict(int)
+    
+    def analyze_grid_with_gemini(self, grid_path: str) -> dict:
+        """
+        Analyze a grid image using Gemini service.
+        
+        Args:
+            grid_path: Path to the grid image file
+            
+        Returns:
+            dict: Analysis results from Gemini service
+            
+        Raises:
+            Exception: If analysis fails
+        """
+        try:
+            print(f"\n{'='*50}")  # Visual separator
+            print(f"Starting Gemini analysis for grid: {grid_path}")
+            print(f"{'='*50}\n")
+            
+            logger.info(f"Starting Gemini analysis for grid: {grid_path}")
+            result = analyze_screenshot_structured(grid_path)
+            
+            print(f"\n{'='*50}")
+            print(f"Gemini analysis result: {result}")
+            print(f"{'='*50}\n")
+            
+            logger.info(f"Gemini analysis result: {result}")
+            return result
+        except Exception as e:
+            print(f"\n{'='*50}")
+            print(f"ERROR: Gemini analysis failed for grid {grid_path}: {e}")
+            print(f"{'='*50}\n")
+            
+            logger.error(f"Gemini analysis failed for grid {grid_path}: {e}")
+            raise
     
     def process_screenshot(self, stream_id: str, stream_name: str, frame_path: str, grid_rows: int = 2, grid_cols: int = 3) -> bool:
         """
@@ -61,10 +97,10 @@ class ScreenshotProcessor:
             os.makedirs(local_dir, exist_ok=True)
             local_path = os.path.join(local_dir, os.path.basename(file_name))
             shutil.copy2(frame_path, local_path)
-            logger.info(f"Saved screenshot locally: {local_path}")
             
             # Increment counter and check if we need to create a grid
             self.screenshot_counts[stream_id] += 1
+            
             if self.screenshot_counts[stream_id] >= self.screenshots_per_grid:
                 success = self._create_grid(stream_id, stream_name, grid_rows, grid_cols)
                 if not success:
@@ -79,7 +115,7 @@ class ScreenshotProcessor:
     
     def _create_grid(self, stream_id: str, stream_name: str, grid_rows: int, grid_cols: int) -> bool:
         """
-        Create a grid image from recent screenshots.
+        Create a grid image from recent screenshots and analyze it with Gemini.
         
         Args:
             stream_id: ID of the stream
@@ -88,7 +124,7 @@ class ScreenshotProcessor:
             grid_cols: Number of columns in the grid
             
         Returns:
-            bool: True if grid creation was successful
+            bool: True if grid creation and analysis were successful
         """
         try:
             # Get recent screenshot URLs
@@ -112,7 +148,15 @@ class ScreenshotProcessor:
             
             # Process the images into a grid
             process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols)
-            logger.info(f"Created grid image: {grid_path}")
+            
+            # Analyze the grid with Gemini
+            try:
+                analysis_result = self.analyze_grid_with_gemini(grid_path)
+                logger.info(f"Grid analysis completed for {stream_name}: {analysis_result}")
+            except Exception as e:
+                logger.error(f"Grid analysis failed for {stream_name}: {e}")
+                # Don't return False here as the grid was created successfully
+                # Just log the error and continue
             
             # Reset counter
             self.screenshot_counts[stream_id] = 0

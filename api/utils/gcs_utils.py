@@ -3,6 +3,7 @@ import os
 from typing import List
 from dotenv import load_dotenv
 from google.cloud import storage
+from datetime import datetime
 
 load_dotenv()
 
@@ -33,7 +34,6 @@ class GCSUtils:
         try:
             blob = self.bucket.blob(destination_blob_name)
             blob.upload_from_filename(file_path)
-            logger.info(f"Uploaded file to GCS: {destination_blob_name}")
             return True
         except Exception as e:
             logger.exception(f"Upload failed for {destination_blob_name}: {e}")
@@ -48,11 +48,27 @@ class GCSUtils:
             count: Number of screenshots to fetch
             
         Returns:
-            List of GCS URLs for the screenshots
+            List of GCS URLs for the screenshots in chronological order (earliest first)
         """
         try:
             blobs = list(self.bucket.list_blobs(prefix=f"screenshots/{stream_id}-"))
-            recent_blobs = sorted(blobs, key=lambda x: x.time_created, reverse=True)[:count]
+            
+            # Sort by the timestamp in the filename (format: YY-MM-DD--HH--MM--SS)
+            def get_timestamp(blob):
+                filename = os.path.basename(blob.name)
+                try:
+                    # Extract timestamp from filename (format: YY-MM-DD--HH--MM--SS)
+                    timestamp_str = filename.split('-', 1)[1].rsplit('.', 1)[0]
+                    return datetime.strptime(timestamp_str, '%y-%m-%d--%H--%M--%S')
+                except:
+                    # If parsing fails, use blob creation time as fallback
+                    return blob.time_created
+            
+            # First get the most recent screenshots
+            recent_blobs = sorted(blobs, key=get_timestamp, reverse=True)[:count]
+            # Then sort them from earliest to latest
+            recent_blobs = sorted(recent_blobs, key=get_timestamp)
+            
             return [blob.public_url for blob in recent_blobs]
         except Exception as e:
             logger.exception(f"Failed to get screenshot URLs for stream {stream_id}: {e}")

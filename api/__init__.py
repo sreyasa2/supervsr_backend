@@ -12,7 +12,7 @@ from api.tasks.cron_jobs import register_cron_jobs
 
 # Configure logging
 logging.basicConfig(
-    level=logging.WARNING,  # Only show WARNING and above
+    level=logging.INFO,  # Show INFO and above
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -28,7 +28,6 @@ def start_scheduler(app):
     scheduler = BackgroundScheduler()
     register_cron_jobs(scheduler, app)
     scheduler.start()
-    logger.warning("Scheduler started")  # Changed to warning level
     return scheduler
 
 def create_app(test_config=None):
