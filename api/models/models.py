@@ -26,7 +26,7 @@ class SOP(db.Model):
     prompt          = db.Column(db.Text)
     frequency       = db.Column(db.Integer, default=10, nullable=False)  # Frequency in seconds
 
-    model           = db.relationship('AIModel', foreign_keys=[model_id])
+    model           = db.relationship('AIModel', backref='sop', lazy=True)
     analysis        = db.relationship('Analysis', backref='sop', lazy=True, cascade='all, delete-orphan')
     rtsp_streams    = db.relationship('RTSPStream', secondary='rtsp_sop_association', back_populates='sops')
 
