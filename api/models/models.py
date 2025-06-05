@@ -10,6 +10,7 @@ class RTSPStream(db.Model):
     description     = db.Column(db.Text)
     name            = db.Column(db.String(255))
     coco_link       = db.Column(db.String(255))
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
 
     sops            = db.relationship('SOP', secondary='rtsp_sop_association', back_populates='rtsp_streams')
     analysis        = db.relationship('Analysis', backref='rtsp_stream', lazy=True, cascade='all, delete-orphan')
@@ -23,6 +24,7 @@ class SOP(db.Model):
     name            = db.Column(db.String(255))
     description     = db.Column(db.Text)
     prompt          = db.Column(db.Text) 
+    frequency       = db.Column(db.Integer, default=10, nullable=False)  # Frequency in second
 
     model           = db.relationship('AIModel', backref='sops', lazy=True)
     analysis        = db.relationship('Analysis', backref='sop', lazy=True, cascade='all, delete-orphan')
@@ -36,6 +38,7 @@ class AIModel(db.Model):
     name            = db.Column(db.String(255), nullable=False)
     description     = db.Column(db.Text)
     link            = db.Column(db.String(255))
+    model_type      = db.Column(db.String(255))
 
 
 class Analysis(db.Model):
@@ -43,7 +46,7 @@ class Analysis(db.Model):
 
     id              = db.Column(db.Integer, primary_key=True)
     rtsp_id         = db.Column(db.Integer, db.ForeignKey('rtsp_stream.id'), nullable=False)
-    sop_id          = db.Column(db.Integer, db.ForeignKey('sop.id'), nullable=True)
+    sop_id          = db.Column(db.Integer, db.ForeignKey('sop.id'), nullable=False)
     timestamp       = db.Column(db.DateTime, nullable=False)
     output          = db.Column(db.Text)
 

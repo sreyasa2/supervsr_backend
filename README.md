@@ -133,6 +133,8 @@ Key configuration options:
 - `MAX_SCREENSHOTS_PER_VIDEO`: Maximum number of screenshots to extract
 - `GEMINI_API_KEY`: Google Gemini API key
 - `DATABASE_URL`: PostgreSQL connection string
+- `API_BASE_URL`: Base URL for API endpoints (default: http://localhost:5000)
+- `STREAMS_CACHE_TTL`: Time-to-live for streams cache in seconds (default: 300)
 
 ## License
 
