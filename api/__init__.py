@@ -9,6 +9,7 @@ from flask_cors import CORS
 from sqlalchemy.orm import DeclarativeBase
 from apscheduler.schedulers.background import BackgroundScheduler
 from api.tasks.cron_jobs import register_cron_jobs  
+import sqlalchemy as sa
 
 # Configure logging
 logging.basicConfig(
@@ -73,6 +74,14 @@ def create_app(test_config=None):
     with app.app_context():
         from api.models import RTSPStream, SOP, AIModel, Analysis, Organization, User
         db.create_all()
+        
+        # Add type column if it doesn't exist
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(sa.text("ALTER TABLE ai_model ADD COLUMN IF NOT EXISTS type VARCHAR(255)"))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Error adding type column: {str(e)}")
 
     # Register routes
     from api.routes import video_bp, sop_bp, analysis_bp, model_bp, relationship_bp
