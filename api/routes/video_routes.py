@@ -70,6 +70,7 @@ def get_streams():
             'rtsp_url': stream.rtsp_url,
             'description': stream.description,
             'coco_link': stream.coco_link,
+            'created_at': stream.created_at.strftime('%Y-%m-%d %H:%M:%S') if stream.created_at else None,
             'sops': [{'id': sop.id, 'name': sop.name} for sop in stream.sops],
             'analysis_count': len(stream.analysis)
         } for stream in streams]
@@ -115,7 +116,8 @@ def add_rtsp_stream():
             name=name,
             rtsp_url=rtsp_url,
             description=description,
-            coco_link=coco_link
+            coco_link=coco_link,
+            created_at=datetime.now()  # Set created_at on creation
         )
         db.session.add(stream)
         db.session.commit()
@@ -150,6 +152,7 @@ def get_stream(stream_id):
                 'rtsp_url': stream.rtsp_url,
                 'description': stream.description,
                 'coco_link': stream.coco_link,
+                'created_at': stream.created_at.strftime('%Y-%m-%d %H:%M:%S') if stream.created_at else None,
                 'sops': [{
                     'id': sop.id,
                     'name': sop.name,
@@ -230,6 +233,7 @@ def update_stream(stream_id):
                 'rtsp_url': stream.rtsp_url,
                 'description': stream.description,
                 'coco_link': stream.coco_link,
+                'created_at': stream.created_at.strftime('%Y-%m-%d %H:%M:%S') if stream.created_at else None,
                 'sops': [{'id': sop.id, 'name': sop.name} for sop in stream.sops]
             }
         })

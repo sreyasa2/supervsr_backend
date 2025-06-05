@@ -18,6 +18,7 @@ def get_models():
             'name': model.name,
             'description': model.description,
             'link': model.link,
+            'model_type': model.model_type,
             'sop_count': len(model.sops)
         } for model in models]
         
@@ -50,7 +51,8 @@ def create_model():
         model = AIModel(
             name=data['name'],
             description=data.get('description', ''),
-            link=data.get('link', '')
+            link=data.get('link', ''),
+            model_type=data.get('model_type', '')
         )
         db.session.add(model)
         db.session.commit()
@@ -83,6 +85,7 @@ def get_model(model_id):
                 'name': model.name,
                 'description': model.description,
                 'link': model.link,
+                'model_type': model.model_type,
                 'sops': [{
                     'id': sop.id,
                     'name': sop.name,
