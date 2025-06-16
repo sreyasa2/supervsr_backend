@@ -20,6 +20,7 @@ def get_sops():
             'model_id': sop.model_id,
             'prompt': sop.prompt,
             'frequency': sop.frequency,
+            'structured_output': sop.structured_output,
             'model': sop.model.name if sop.model else None
         } for sop in sops]
         
@@ -47,7 +48,8 @@ def create_sop():
             description=data.get('description', ''),
             model_id=data.get('model_id'),
             prompt=data.get('prompt', ''),
-            frequency=data.get('frequency', 10)  # Default to 10 if not provided
+            frequency=data.get('frequency', 10),  # Default to 10 if not provided
+            structured_output=data.get('structured_output')
         )
         db.session.add(sop)
         db.session.commit()
@@ -77,6 +79,7 @@ def get_sop(sop_id):
                 'model_id': sop.model_id,
                 'prompt': sop.prompt,
                 'frequency': sop.frequency,
+                'structured_output': sop.structured_output,
                 'model': sop.model.name if sop.model else None,
                 'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams]
             }
@@ -108,6 +111,8 @@ def update_sop(sop_id):
             sop.prompt = data['prompt']
         if 'frequency' in data:
             sop.frequency = data['frequency']
+        if 'structured_output' in data:
+            sop.structured_output = data['structured_output']
             
         # Handle RTSP stream updates
         if 'rtsp_streams' in data:
@@ -142,6 +147,7 @@ def update_sop(sop_id):
                 'model_id': sop.model_id,
                 'prompt': sop.prompt,
                 'frequency': sop.frequency,
+                'structured_output': sop.structured_output,
                 'rtsp_streams': [{'id': stream.id, 'name': stream.name} for stream in sop.rtsp_streams]
             }
         })
