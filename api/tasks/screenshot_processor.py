@@ -10,7 +10,8 @@ from flask import current_app
 from api.utils.gcs_utils import GCSUtils
 from api.utils.api_utils import get_api_url
 from api.tasks.stitcher import process_images
-from api.services.gemini_service import analyze_screenshot_structured
+from api.services.gemini_service import GeminiService, GeminiConfig
+from api.models.models import SOP
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,14 @@ class ScreenshotProcessor:
             self._initialized = True
             logger.info("Initialized new ScreenshotProcessor instance")
     
-    def create_analysis_record(self, rtsp_id: str, sop_id: str, output: str) -> bool:
+    def create_analysis_record(self, rtsp_id: str, sop_id: str, output: dict) -> bool:
         """
         Create an analysis record through the API.
         
         Args:
             rtsp_id: ID of the RTSP stream
             sop_id: ID of the SOP
-            output: Analysis output text
+            output: Analysis output dict
             
         Returns:
             bool: True if creation was successful
@@ -88,7 +89,15 @@ class ScreenshotProcessor:
             print(f"{'='*50}\n")
             
             logger.info(f"Starting Gemini analysis for grid: {grid_path}")
-            result = analyze_screenshot_structured(grid_path)
+            
+            # Fetch SOP instance from DB
+            sop = SOP.query.get(sop_id)
+            if not sop or not sop.structured_output:
+                raise ValueError("SOP or its structured_output not found")
+            
+            # Use the new GeminiService
+            gemini_service = GeminiService(GeminiConfig.from_app_config())
+            result = gemini_service.analyze_image_with_sop(grid_path, sop)
             
             print(f"\n{'='*50}")
             print(f"Gemini analysis result: {result}")
@@ -96,8 +105,8 @@ class ScreenshotProcessor:
             
             logger.info(f"Gemini analysis result: {result}")
             
-            # Create analysis record through API
-            if not self.create_analysis_record(rtsp_id, sop_id, str(result)):
+            # Create analysis record through API (send as JSON, not string)
+            if not self.create_analysis_record(rtsp_id, sop_id, result):
                 logger.error("Failed to create analysis record")
             
             return result

@@ -1,5 +1,5 @@
 from datetime import datetime
-from api import db
+from api.database import db
 
 
 class RTSPStream(db.Model):
@@ -25,6 +25,7 @@ class SOP(db.Model):
     description     = db.Column(db.Text)
     prompt          = db.Column(db.Text) 
     frequency       = db.Column(db.Integer, default=10, nullable=False)  # Frequency in second
+    structured_output = db.Column(db.JSON, nullable=True)  # Stores the expected response structure
 
     model           = db.relationship('AIModel', backref='sops', lazy=True)
     analysis        = db.relationship('Analysis', backref='sop', lazy=True, cascade='all, delete-orphan')
@@ -48,8 +49,7 @@ class Analysis(db.Model):
     rtsp_id         = db.Column(db.Integer, db.ForeignKey('rtsp_stream.id'), nullable=False)
     sop_id          = db.Column(db.Integer, db.ForeignKey('sop.id'), nullable=False)
     timestamp       = db.Column(db.DateTime, nullable=False)
-    output          = db.Column(db.Text)
-
+    output          = db.Column(db.JSON, nullable=True)  # Changed from Text to JSON to store structured data
 
 class Organization(db.Model):
     __tablename__   = 'organization'

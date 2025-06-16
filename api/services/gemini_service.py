@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Set
 import os
-import base64
 import logging
 import json
 import imghdr
@@ -42,23 +41,9 @@ class GeminiConfig:
         api_key = current_app.config.get('GEMINI_API_KEY') or os.environ.get('GEMINI_API_KEY')
         if not api_key:
             raise GeminiConfigError("Gemini API key not configured")
-        
         model_name = current_app.config.get('GEMINI_MODEL_NAME', "gemini-2.0-flash")
         timeout = current_app.config.get('GEMINI_TIMEOUT_SECONDS', 30)
         return cls(api_key=api_key, model_name=model_name, timeout_seconds=timeout)
-
-class DecanterAnalysisResult:
-    """Structured result of decanter analysis."""
-    def __init__(self, data: Dict[str, bool]):
-        self.is_being_opened = data["Decanter being opened"]
-        self.is_already_opened = data["Decanter already opened"]
-        self.is_being_closed = data["Decanter being closed"]
-        self.is_already_closed = data["Decanter already closed"]
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, bool]) -> 'DecanterAnalysisResult':
-        """Create result from dictionary."""
-        return cls(data)
 
 class GeminiService:
     """Service for interacting with Google's Gemini API."""
@@ -71,22 +56,6 @@ class GeminiService:
         'gif': 'image/gif',
         'bmp': 'image/bmp'
     }
-    
-    RESPONSE_SCHEMA = types.Schema(
-        type=types.Type.OBJECT,
-        required=[
-            "Decanter being opened",
-            "Decanter already opened",
-            "Decanter being closed",
-            "Decanter already closed",
-        ],
-        properties={
-            "Decanter being opened": types.Schema(type=types.Type.BOOLEAN),
-            "Decanter already opened": types.Schema(type=types.Type.BOOLEAN),
-            "Decanter being closed": types.Schema(type=types.Type.BOOLEAN),
-            "Decanter already closed": types.Schema(type=types.Type.BOOLEAN),
-        },
-    )
 
     def __init__(self, config: GeminiConfig):
         """Initialize the Gemini service."""
@@ -94,48 +63,19 @@ class GeminiService:
         self.client = genai.Client(api_key=config.api_key)
 
     def _validate_image(self, image_path: Path) -> tuple[str, str]:
-        """
-        Validate image file and return its type and MIME type.
-        
-        Args:
-            image_path: Path to the image file
-            
-        Returns:
-            tuple: (image_type, mime_type)
-            
-        Raises:
-            GeminiAnalysisError: If file is not a valid image or type is not supported
-        """
         if not image_path.exists():
             raise GeminiAnalysisError(f"Image file not found: {image_path}")
-            
-        # Check if file is a valid image
         image_type = imghdr.what(image_path)
         if not image_type:
             raise GeminiAnalysisError(f"File is not a valid image: {image_path}")
-            
-        # Check if image type is supported
         if image_type not in self.SUPPORTED_IMAGE_TYPES:
             raise GeminiAnalysisError(
                 f"Unsupported image type: {image_type}. "
                 f"Supported types are: {', '.join(self.SUPPORTED_IMAGE_TYPES)}"
             )
-            
         return image_type, self.MIME_TYPE_MAP[image_type]
 
     def _read_image(self, image_path: Path) -> tuple[bytes, str]:
-        """
-        Read image file and return its bytes and MIME type.
-        
-        Args:
-            image_path: Path to the image file
-            
-        Returns:
-            tuple: (image_bytes, mime_type)
-            
-        Raises:
-            GeminiAnalysisError: If there's an error reading the file
-        """
         try:
             _, mime_type = self._validate_image(image_path)
             with open(image_path, "rb") as image_file:
@@ -143,53 +83,49 @@ class GeminiService:
         except Exception as e:
             raise GeminiAnalysisError(f"Failed to read image file: {e}")
 
-    def _create_prompt_content(self, image_bytes: bytes, mime_type: str) -> list[types.Content]:
-        """Create the prompt content for Gemini."""
-        return [
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part(
-                        inline_data=types.Blob(
-                            mime_type=mime_type,
-                            data=image_bytes
-                        )
-                    ),
-                    types.Part(
-                        text=(
-                            "This is an image of a decanter in an ethanol distillery. "
-                            "Focus on the only decanter clearly visible and centered in the image, "
-                            "and respond with JSON containing the following boolean fields: "
-                            "\"Decanter being opened\", \"Decanter already opened\", "
-                            "\"Decanter being closed\", \"Decanter already closed\"."
-                        )
-                    ),
-                ],
-            ),
-        ]
+    def _create_schema_from_sop(self, structured_output: dict) -> types.Schema:
+        """Convert SOP structured_output to Gemini schema."""
+        def convert_type_to_gemini_type(type_str: str) -> types.Type:
+            type_map = {
+                "string": types.Type.STRING,
+                "number": types.Type.NUMBER,
+                "boolean": types.Type.BOOLEAN,
+                "array": types.Type.ARRAY,
+                "object": types.Type.OBJECT
+            }
+            return type_map.get(type_str.lower(), types.Type.STRING)
 
-    def _parse_response(self, response_text: str) -> DecanterAnalysisResult:
-        """Parse the Gemini response into a structured result."""
-        try:
-            logger.info("Attempting to parse JSON response...")
-            data = json.loads(response_text)
-            logger.info(f"JSON parsed successfully: {data}")
-            return DecanterAnalysisResult.from_dict(data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON from Gemini response: {e}")
-            logger.debug(f"Raw output: {response_text}")
-            raise GeminiAnalysisError("Gemini response was not valid JSON")
+        def build_schema(schema_dict: dict) -> types.Schema:
+            if "type" not in schema_dict:
+                return types.Schema(type=types.Type.OBJECT)
+            schema_type = convert_type_to_gemini_type(schema_dict["type"])
+            if schema_type == types.Type.OBJECT and "properties" in schema_dict:
+                properties = {
+                    key: build_schema(prop)
+                    for key, prop in schema_dict["properties"].items()
+                }
+                return types.Schema(
+                    type=schema_type,
+                    properties=properties,
+                    required=schema_dict.get("required", [])
+                )
+            elif schema_type == types.Type.ARRAY and "items" in schema_dict:
+                return types.Schema(
+                    type=schema_type,
+                    items=build_schema(schema_dict["items"])
+                )
+            else:
+                return types.Schema(type=schema_type)
+        return build_schema(structured_output)
 
-    def analyze_screenshot(self, image_path: str | Path) -> DecanterAnalysisResult:
+    def analyze_image_with_sop(self, image_path: str | Path, sop: 'SOP') -> dict:
         """
-        Analyze a screenshot using Google Gemini and return structured output.
-        
+        Analyze an image using Google Gemini according to SOP's structured output schema.
         Args:
-            image_path: Path to the image file. Supported formats: JPEG, PNG, GIF, BMP
-            
+            image_path: Path to the image file
+            sop: SOP model instance containing the prompt and structured_output schema
         Returns:
-            DecanterAnalysisResult: Structured analysis result
-            
+            dict: Structured analysis result matching the SOP's schema
         Raises:
             GeminiConfigError: If there's an issue with the configuration
             GeminiAnalysisError: If there's an error during analysis
@@ -198,23 +134,28 @@ class GeminiService:
         try:
             logger.info(f"Starting analysis for image: {image_path}")
             image_path = Path(image_path)
-            logger.info("Reading image file...")
             image_bytes, mime_type = self._read_image(image_path)
-            logger.info(f"Image read successfully. Size: {len(image_bytes)} bytes, Type: {mime_type}")
-            
-            logger.info("Creating prompt content...")
-            contents = self._create_prompt_content(image_bytes, mime_type)
-            logger.info("Prompt content created successfully")
-
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(
+                            inline_data=types.Blob(
+                                mime_type=mime_type,
+                                data=image_bytes
+                            )
+                        ),
+                        types.Part(text=sop.prompt)
+                    ],
+                ),
+            ]
+            response_schema = self._create_schema_from_sop(sop.structured_output)
             generate_content_config = types.GenerateContentConfig(
                 temperature=self.config.temperature,
                 response_mime_type="application/json",
-                response_schema=self.RESPONSE_SCHEMA,
+                response_schema=response_schema,
             )
-            logger.info(f"Using model: {self.config.model_name} with temperature: {self.config.temperature}")
-
             try:
-                logger.info("Starting Gemini API call...")
                 full_output = ""
                 start_time = time.time()
                 response_chunks = self.client.models.generate_content_stream(
@@ -222,59 +163,18 @@ class GeminiService:
                     contents=contents,
                     config=generate_content_config,
                 )
-                
-                logger.info("Processing response chunks...")
-                chunk_count = 0
                 for chunk in response_chunks:
-                    # Check for timeout
                     if time.time() - start_time > self.config.timeout_seconds:
                         raise GeminiTimeoutError(f"API call timed out after {self.config.timeout_seconds} seconds")
-                    
-                    chunk_count += 1
                     full_output += chunk.text
-                    if chunk_count % 10 == 0:  # Log every 10 chunks
-                        logger.info(f"Processed {chunk_count} chunks...")
-                
-                logger.info(f"Response processing complete. Total chunks: {chunk_count}")
-                logger.info("Parsing response...")
-                result = self._parse_response(full_output)
-                logger.info("Response parsed successfully")
+                result = json.loads(full_output)
                 return result
-
             except Exception as api_error:
                 error_msg = str(api_error)
                 logger.error(f"API Error: {error_msg}")
                 if "deprecated" in error_msg.lower():
-                    logger.error(f"Model {self.config.model_name} is deprecated. Please update to a newer model.")
                     raise GeminiConfigError(f"Model {self.config.model_name} is deprecated. Please update to gemini-1.5-flash or newer.")
                 raise
-
         except Exception as e:
-            if isinstance(e, (GeminiConfigError, GeminiAnalysisError, GeminiTimeoutError)):
-                raise
-            logger.error(f"Unexpected error during Gemini analysis: {e}")
-            raise GeminiAnalysisError(f"Analysis failed: {str(e)}")
-
-def analyze_screenshot_structured(image_path: str | Path) -> Dict[str, bool]:
-    """
-    Analyze a screenshot using Google Gemini and return structured JSON output.
-    
-    Args:
-        image_path: Path to the image file. Supported formats: JPEG, PNG, GIF, BMP
-    
-    Returns:
-        dict: Parsed JSON object with boolean fields
-        
-    Raises:
-        GeminiConfigError: If there's an issue with the configuration
-        GeminiAnalysisError: If there's an error during analysis
-    """
-    config = GeminiConfig.from_app_config()
-    service = GeminiService(config)
-    result = service.analyze_screenshot(image_path)
-    return {
-        "Decanter being opened": result.is_being_opened,
-        "Decanter already opened": result.is_already_opened,
-        "Decanter being closed": result.is_being_closed,
-        "Decanter already closed": result.is_already_closed,
-    }
+            logger.error(f"Analysis failed: {str(e)}")
+            raise GeminiAnalysisError(f"Failed to analyze image: {str(e)}")

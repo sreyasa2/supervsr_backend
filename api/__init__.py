@@ -3,25 +3,19 @@ import logging
 import atexit
 from api import tasks
 from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
-from sqlalchemy.orm import DeclarativeBase
 from apscheduler.schedulers.background import BackgroundScheduler
-from api.tasks.cron_jobs import register_cron_jobs  
+from api.tasks.cron_jobs import register_cron_jobs
+from api.database import db  # Import db from database.py
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,  # Show INFO and above
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Initialize database
-class Base(DeclarativeBase):
-    pass
-
-db = SQLAlchemy(model_class=Base)
 migrate = Migrate()
 
 def start_scheduler(app):
