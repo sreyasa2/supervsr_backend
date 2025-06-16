@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # API configuration
-API_BASE_URL = 'http://localhost:5000'
+API_BASE_URL = 'http://localhost:8000'
 
 def health_check():
     """Check if the API is running"""

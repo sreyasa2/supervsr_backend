@@ -1,11 +1,14 @@
 import logging
 import os
 import shutil
+import requests
 from datetime import datetime
 from collections import defaultdict
 from urllib.parse import urlparse
+from flask import current_app
 
 from api.utils.gcs_utils import GCSUtils
+from api.utils.api_utils import get_api_url
 from api.tasks.stitcher import process_images
 from api.services.gemini_service import analyze_screenshot_structured
 
@@ -24,12 +27,43 @@ class ScreenshotProcessor:
         self.screenshots_per_grid = screenshots_per_grid
         self.screenshot_counts = defaultdict(int)
     
-    def analyze_grid_with_gemini(self, grid_path: str) -> dict:
+    def create_analysis_record(self, rtsp_id: str, sop_id: str, output: str) -> bool:
         """
-        Analyze a grid image using Gemini service.
+        Create an analysis record through the API.
+        
+        Args:
+            rtsp_id: ID of the RTSP stream
+            sop_id: ID of the SOP
+            output: Analysis output text
+            
+        Returns:
+            bool: True if creation was successful
+        """
+        try:
+            response = requests.post(
+                get_api_url('/api/analysis'),
+                json={
+                    'rtsp_id': rtsp_id,
+                    'sop_id': sop_id,
+                    'output': output
+                }
+            )
+            if not response.ok:
+                logger.error(f"Failed to create analysis record: {response.text}")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Error creating analysis record: {e}")
+            return False
+    
+    def analyze_grid_with_gemini(self, grid_path: str, rtsp_id: str, sop_id: str) -> dict:
+        """
+        Analyze a grid image using Gemini service and create an analysis record.
         
         Args:
             grid_path: Path to the grid image file
+            rtsp_id: ID of the RTSP stream
+            sop_id: ID of the SOP
             
         Returns:
             dict: Analysis results from Gemini service
@@ -50,6 +84,11 @@ class ScreenshotProcessor:
             print(f"{'='*50}\n")
             
             logger.info(f"Gemini analysis result: {result}")
+            
+            # Create analysis record through API
+            if not self.create_analysis_record(rtsp_id, sop_id, str(result)):
+                logger.error("Failed to create analysis record")
+            
             return result
         except Exception as e:
             print(f"\n{'='*50}")
@@ -149,14 +188,31 @@ class ScreenshotProcessor:
             # Process the images into a grid
             process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols)
             
-            # Analyze the grid with Gemini
+            # Get SOP ID for this stream
             try:
-                analysis_result = self.analyze_grid_with_gemini(grid_path)
-                logger.info(f"Grid analysis completed for {stream_name}: {analysis_result}")
+                response = requests.get(get_api_url(f'/api/stream/{stream_id}'))
+                if not response.ok:
+                    logger.error(f"Failed to get stream details: {response.text}")
+                    return False
+                
+                stream_data = response.json()['stream']
+                if not stream_data['sops']:
+                    logger.warning(f"No SOPs associated with stream {stream_name}")
+                    return True
+                
+                # Use the first SOP for analysis
+                sop_id = stream_data['sops'][0]['id']
+                
+                # Analyze the grid with Gemini
+                try:
+                    analysis_result = self.analyze_grid_with_gemini(grid_path, stream_id, sop_id)
+                    logger.info(f"Grid analysis completed for {stream_name}: {analysis_result}")
+                except Exception as e:
+                    logger.error(f"Grid analysis failed for {stream_name}: {e}")
+                    # Don't return False here as the grid was created successfully
+                    # Just log the error and continue
             except Exception as e:
-                logger.error(f"Grid analysis failed for {stream_name}: {e}")
-                # Don't return False here as the grid was created successfully
-                # Just log the error and continue
+                logger.error(f"Error getting stream details: {e}")
             
             # Reset counter
             self.screenshot_counts[stream_id] = 0

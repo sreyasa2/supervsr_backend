@@ -23,7 +23,7 @@ class Config:
     GEMINI_MODEL_NAME = "gemini-2.0-flash"
     
     # API settings
-    API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:5000")
+    API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
     STREAMS_CACHE_TTL = int(os.environ.get("STREAMS_CACHE_TTL", "300"))  # Default 5 minutes
     
 

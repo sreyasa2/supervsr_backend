@@ -7,6 +7,7 @@ from flask import current_app
 from api.tasks.stream_manager import StreamManager
 from api.tasks.screenshot_processor import ScreenshotProcessor
 from api.utils.gcs_utils import GCSUtils
+from api.utils.api_utils import get_api_url
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,6 @@ streams_cache = {
     'ttl': None  # Will be set from config when first used
 }
 
-def get_api_url(endpoint):
-    """Get the full API URL for an endpoint"""
-    base_url = current_app.config.get('API_BASE_URL', 'http://localhost:5000')
-    return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-
 def get_streams():
     """Get streams from cache or API"""
     current_time = time.time()
@@ -47,17 +43,48 @@ def get_streams():
     
     try:
         # Get streams from API
-        response = requests.get(get_api_url('/api/streams'))
+        api_url = get_api_url('/api/streams')
+        logger.info(f"Fetching streams from API: {api_url}")
+        
+        response = requests.get(api_url)
+        
         if not response.ok:
-            logger.error(f"Failed to get streams from API: {response.text}")
+            error_msg = f"API request failed with status {response.status_code}"
+            try:
+                error_detail = response.json()
+                error_msg += f": {error_detail}"
+            except:
+                error_msg += f": {response.text}"
+            logger.error(error_msg)
             return streams_cache['streams']  # Return cached streams on error
         
+        data = response.json()
+        if 'streams' not in data:
+            logger.error(f"Invalid API response format. Expected 'streams' key. Got: {data}")
+            return streams_cache['streams']
+            
+        streams = data['streams']
+        if not streams:
+            logger.warning("No streams found in the database. Please add streams through the API.")
+        else:
+            logger.info(f"Successfully fetched {len(streams)} streams from API")
+        
         # Update cache
-        streams_cache['streams'] = response.json()['streams']
+        streams_cache['streams'] = streams
         streams_cache['last_updated'] = current_time
         return streams_cache['streams']
+        
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Failed to connect to API server: {str(e)}")
+        return streams_cache['streams']
+    except requests.exceptions.Timeout as e:
+        logger.error(f"API request timed out: {str(e)}")
+        return streams_cache['streams']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API request failed: {str(e)}")
+        return streams_cache['streams']
     except Exception as e:
-        logger.error(f"Error getting streams from API: {e}")
+        logger.error(f"Unexpected error while fetching streams: {str(e)}")
         return streams_cache['streams']  # Return cached streams on error
 
 def initialize_streams(app):

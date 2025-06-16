@@ -1,5 +1,5 @@
 import logging
-import datetime
+from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from api.models import SOP, AIModel, RTSPStream
 from api import db

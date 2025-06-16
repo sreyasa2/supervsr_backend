@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 import logging
-import datetime
+from datetime import datetime
 import cv2
 from flask import Blueprint, request, jsonify, current_app, abort, send_from_directory
 from api.models import RTSPStream, SOP
