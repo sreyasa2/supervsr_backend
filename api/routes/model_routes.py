@@ -120,6 +120,8 @@ def update_model(model_id):
             model.description = data['description']
         if 'link' in data:
             model.link = data['link']
+        if 'model_type' in data:
+            model.model_type = data['model_type']
         
         db.session.commit()
         
