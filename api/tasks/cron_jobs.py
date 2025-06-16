@@ -10,14 +10,15 @@ from api.utils.gcs_utils import GCSUtils
 from api.utils.api_utils import get_api_url
 
 logger = logging.getLogger(__name__)
+# Grid dimensions
+GRID_ROWS = 2
+GRID_COLS = 3
 
 # Initialize utilities
 gcs_utils = GCSUtils()
 stream_manager = StreamManager()
+screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
 
-# Grid dimensions
-GRID_ROWS = 2
-GRID_COLS = 3
 
 # Track screenshot counts for each stream
 screenshot_counts = defaultdict(int)
@@ -123,7 +124,6 @@ def screenshots(app):
     """Capture latest frame from memory and upload every 10 seconds"""
     with app.app_context():
         streams = get_streams()
-        screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
         
         for stream in streams:
             try:

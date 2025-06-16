@@ -15,6 +15,14 @@ from api.services.gemini_service import analyze_screenshot_structured
 logger = logging.getLogger(__name__)
 
 class ScreenshotProcessor:
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(ScreenshotProcessor, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, gcs_utils: GCSUtils, screenshots_per_grid: int = 6):
         """
         Initialize the ScreenshotProcessor.
@@ -23,9 +31,12 @@ class ScreenshotProcessor:
             gcs_utils: GCSUtils instance for GCS operations
             screenshots_per_grid: Number of screenshots needed for a grid (should be grid_rows * grid_cols)
         """
-        self.gcs_utils = gcs_utils
-        self.screenshots_per_grid = screenshots_per_grid
-        self.screenshot_counts = defaultdict(int)
+        if not self._initialized:
+            self.gcs_utils = gcs_utils
+            self.screenshots_per_grid = screenshots_per_grid
+            self.screenshot_counts = defaultdict(int)
+            self._initialized = True
+            logger.info("Initialized new ScreenshotProcessor instance")
     
     def create_analysis_record(self, rtsp_id: str, sop_id: str, output: str) -> bool:
         """
@@ -173,7 +184,7 @@ class ScreenshotProcessor:
             )
             
             if len(recent_screenshot_urls) != self.screenshots_per_grid:
-                logger.warning(f"Not enough screenshots for grid creation: {stream_name}")
+                logger.warning(f"Not enough screenshots for grid creation: {stream_name}. Got {len(recent_screenshot_urls)}, need {self.screenshots_per_grid}")
                 return False
             
             # Use the filename of the first screenshot for the grid filename
@@ -206,7 +217,6 @@ class ScreenshotProcessor:
                 # Analyze the grid with Gemini
                 try:
                     analysis_result = self.analyze_grid_with_gemini(grid_path, stream_id, sop_id)
-                    logger.info(f"Grid analysis completed for {stream_name}: {analysis_result}")
                 except Exception as e:
                     logger.error(f"Grid analysis failed for {stream_name}: {e}")
                     # Don't return False here as the grid was created successfully
