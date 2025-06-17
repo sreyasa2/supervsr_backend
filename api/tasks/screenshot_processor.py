@@ -210,6 +210,17 @@ class ScreenshotProcessor:
             # Process the images into a grid
             process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols)
             
+            # Upload grid to GCS
+            if not self.gcs_utils.upload_file(grid_path, grid_filename):
+                logger.error(f"Failed to upload grid to GCS: {grid_filename}")
+                return False
+            
+            # Get GCS URL for the grid
+            grid_url = self.gcs_utils.get_file_url(grid_filename)
+            if not grid_url:
+                logger.error(f"Failed to get GCS URL for grid: {grid_filename}")
+                return False
+            
             # Get SOPs for this stream
             try:
                 response = requests.get(get_api_url(f'/api/stream/{stream_id}'))
@@ -225,7 +236,7 @@ class ScreenshotProcessor:
                 # Analyze the grid with each SOP
                 for sop in stream_data['sops']:
                     try:
-                        analysis_result = self.analyze_grid_with_gemini(grid_path, stream_id, sop['id'])
+                        analysis_result = self.analyze_grid_with_gemini(grid_url, stream_id, sop['id'])
                         logger.info(f"Successfully analyzed grid with SOP {sop['name']} (ID: {sop['id']})")
                     except Exception as e:
                         logger.error(f"Grid analysis failed for SOP {sop['name']} (ID: {sop['id']}): {e}")

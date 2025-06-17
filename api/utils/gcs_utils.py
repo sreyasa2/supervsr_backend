@@ -73,3 +73,20 @@ class GCSUtils:
         except Exception as e:
             logger.exception(f"Failed to get screenshot URLs for stream {stream_id}: {e}")
             return []
+    
+    def get_file_url(self, blob_name: str) -> str:
+        """
+        Get the public URL for a file in GCS.
+        
+        Args:
+            blob_name: Name of the blob in GCS
+            
+        Returns:
+            str: Public URL for the file
+        """
+        try:
+            blob = self.bucket.blob(blob_name)
+            return blob.public_url
+        except Exception as e:
+            logger.exception(f"Failed to get URL for {blob_name}: {e}")
+            return None

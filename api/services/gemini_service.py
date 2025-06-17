@@ -75,8 +75,29 @@ class GeminiService:
             )
         return image_type, self.MIME_TYPE_MAP[image_type]
 
-    def _read_image(self, image_path: Path) -> tuple[bytes, str]:
+    def _read_image(self, image_path: Path | str) -> tuple[bytes, str]:
+        """
+        Read image data from either a local file path or GCS URL.
+        
+        Args:
+            image_path: Path to local file or GCS URL
+            
+        Returns:
+            tuple[bytes, str]: Image data and MIME type
+        """
         try:
+            # Handle GCS URL
+            if isinstance(image_path, str) and image_path.startswith('https://storage.googleapis.com/'):
+                import requests
+                response = requests.get(image_path)
+                response.raise_for_status()
+                image_data = response.content
+                # Determine MIME type from content-type header or file extension
+                mime_type = response.headers.get('content-type', 'image/jpeg')
+                return image_data, mime_type
+            
+            # Handle local file path
+            image_path = Path(image_path)
             _, mime_type = self._validate_image(image_path)
             with open(image_path, "rb") as image_file:
                 return image_file.read(), mime_type
@@ -122,7 +143,7 @@ class GeminiService:
         """
         Analyze an image using Google Gemini according to SOP's structured output schema.
         Args:
-            image_path: Path to the image file
+            image_path: Path to the image file or GCS URL
             sop: SOP model instance containing the prompt and structured_output schema
         Returns:
             dict: Structured analysis result matching the SOP's schema
@@ -133,7 +154,9 @@ class GeminiService:
         """
         try:
             logger.info(f"Starting analysis for image: {image_path}")
-            image_path = Path(image_path)
+            # Only convert to Path if it's a local file path
+            if isinstance(image_path, str) and not image_path.startswith('https://storage.googleapis.com/'):
+                image_path = Path(image_path)
             image_bytes, mime_type = self._read_image(image_path)
             contents = [
                 types.Content(
