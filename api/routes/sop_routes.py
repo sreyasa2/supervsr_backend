@@ -19,6 +19,10 @@ def log_structured_output(sop_id: int, structured_output: dict):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     log_file = os.path.join(LOGS_DIR, 'structured_output.log')
     
+    # Ensure structured_output is properly serialized
+    if isinstance(structured_output, str):
+        structured_output = json.loads(structured_output)
+    
     log_entry = {
         'timestamp': timestamp,
         'sop_id': sop_id,
@@ -107,9 +111,15 @@ def create_sop():
     
     # Validate structured_output if provided
     if 'structured_output' in data:
-        is_valid, error = validate_structured_output(data['structured_output'])
-        if not is_valid:
-            return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
+        try:
+            # Ensure structured_output is valid JSON
+            if isinstance(data['structured_output'], str):
+                data['structured_output'] = json.loads(data['structured_output'])
+            is_valid, error = validate_structured_output(data['structured_output'])
+            if not is_valid:
+                return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
+        except json.JSONDecodeError:
+            return jsonify({'success': False, 'error': 'structured_output must be valid JSON'}), 400
     
     try:
         # Create new SOP record
@@ -186,13 +196,19 @@ def update_sop(sop_id):
         if 'frequency' in data:
             sop.frequency = data['frequency']
         if 'structured_output' in data:
-            # Validate structured_output
-            is_valid, error = validate_structured_output(data['structured_output'])
-            if not is_valid:
-                return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
-            sop.structured_output = data['structured_output']
-            # Log the structured output
-            log_structured_output(sop.id, sop.structured_output)
+            try:
+                # Ensure structured_output is valid JSON
+                if isinstance(data['structured_output'], str):
+                    data['structured_output'] = json.loads(data['structured_output'])
+                # Validate structured_output
+                is_valid, error = validate_structured_output(data['structured_output'])
+                if not is_valid:
+                    return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
+                sop.structured_output = data['structured_output']
+                # Log the structured output
+                log_structured_output(sop.id, sop.structured_output)
+            except json.JSONDecodeError:
+                return jsonify({'success': False, 'error': 'structured_output must be valid JSON'}), 400
             
         # Handle RTSP stream updates
         if 'rtsp_streams' in data:

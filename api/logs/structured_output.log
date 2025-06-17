@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-06-17 15:37:40",
+  "sop_id": 6,
+  "structured_output": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "number"
+      },
+      "description": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "count"
+    ]
+  }
+}
+---
