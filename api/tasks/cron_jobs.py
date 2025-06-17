@@ -19,10 +19,6 @@ gcs_utils = GCSUtils()
 stream_manager = StreamManager()
 screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
 
-
-# Track screenshot counts for each stream
-screenshot_counts = defaultdict(int)
-
 # Cache for streams
 streams_cache = {
     'streams': [],

@@ -161,6 +161,8 @@ class ScreenshotProcessor:
             self.screenshot_counts[stream_id] += 1
             
             if self.screenshot_counts[stream_id] >= self.screenshots_per_grid:
+                # Reset counter before attempting grid creation
+                self.screenshot_counts[stream_id] = 0
                 success = self._create_grid(stream_id, stream_name, grid_rows, grid_cols)
                 if not success:
                     logger.error(f"Failed to create grid for stream {stream_name}")
@@ -233,8 +235,6 @@ class ScreenshotProcessor:
             except Exception as e:
                 logger.error(f"Error getting stream details: {e}")
             
-            # Reset counter
-            self.screenshot_counts[stream_id] = 0
             return True
             
         except Exception as e:
