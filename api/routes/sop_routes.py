@@ -1,4 +1,6 @@
 import logging
+import os
+import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from api.models import SOP, AIModel, RTSPStream
@@ -7,6 +9,68 @@ from sqlalchemy.exc import SQLAlchemyError
 
 sop_bp = Blueprint('sop', __name__)
 logger = logging.getLogger(__name__)
+
+# Create logs directory if it doesn't exist
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+def log_structured_output(sop_id: int, structured_output: dict):
+    """Log structured output to a text file."""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_file = os.path.join(LOGS_DIR, 'structured_output.log')
+    
+    log_entry = {
+        'timestamp': timestamp,
+        'sop_id': sop_id,
+        'structured_output': structured_output
+    }
+    
+    with open(log_file, 'a') as f:
+        f.write(json.dumps(log_entry, indent=2) + '\n---\n')
+
+def validate_structured_output(schema):
+    """Validate the structured_output schema format."""
+    if schema is None:
+        return True, None
+        
+    if not isinstance(schema, dict):
+        return False, "Schema must be a JSON object"
+        
+    if "type" not in schema:
+        return False, "Schema must have a 'type' field"
+        
+    valid_types = ["string", "number", "boolean", "array", "object"]
+    if schema["type"] not in valid_types:
+        return False, f"Invalid type. Must be one of: {', '.join(valid_types)}"
+        
+    if schema["type"] == "object":
+        if "properties" not in schema:
+            return False, "Object type must have 'properties' field"
+        if not isinstance(schema["properties"], dict):
+            return False, "'properties' must be a JSON object"
+            
+        # Validate each property recursively
+        for prop_name, prop_schema in schema["properties"].items():
+            is_valid, error = validate_structured_output(prop_schema)
+            if not is_valid:
+                return False, f"Invalid property '{prop_name}': {error}"
+                
+        # Validate required fields if present
+        if "required" in schema:
+            if not isinstance(schema["required"], list):
+                return False, "'required' must be a list"
+            for req_field in schema["required"]:
+                if req_field not in schema["properties"]:
+                    return False, f"Required field '{req_field}' not found in properties"
+                    
+    elif schema["type"] == "array":
+        if "items" not in schema:
+            return False, "Array type must have 'items' field"
+        is_valid, error = validate_structured_output(schema["items"])
+        if not is_valid:
+            return False, f"Invalid array items: {error}"
+            
+    return True, None
 
 @sop_bp.route('/api/sops', methods=['GET'])
 def get_sops():
@@ -41,6 +105,12 @@ def create_sop():
     if not data or not data.get('name'):
         return jsonify({'success': False, 'error': 'Required fields missing: name is required'}), 400
     
+    # Validate structured_output if provided
+    if 'structured_output' in data:
+        is_valid, error = validate_structured_output(data['structured_output'])
+        if not is_valid:
+            return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
+    
     try:
         # Create new SOP record
         sop = SOP(
@@ -53,6 +123,10 @@ def create_sop():
         )
         db.session.add(sop)
         db.session.commit()
+        
+        # Log structured output if provided
+        if sop.structured_output:
+            log_structured_output(sop.id, sop.structured_output)
         
         return jsonify({
             'success': True,
@@ -112,7 +186,13 @@ def update_sop(sop_id):
         if 'frequency' in data:
             sop.frequency = data['frequency']
         if 'structured_output' in data:
+            # Validate structured_output
+            is_valid, error = validate_structured_output(data['structured_output'])
+            if not is_valid:
+                return jsonify({'success': False, 'error': f'Invalid structured_output format: {error}'}), 400
             sop.structured_output = data['structured_output']
+            # Log the structured output
+            log_structured_output(sop.id, sop.structured_output)
             
         # Handle RTSP stream updates
         if 'rtsp_streams' in data:
