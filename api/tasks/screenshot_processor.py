@@ -210,7 +210,7 @@ class ScreenshotProcessor:
             # Process the images into a grid
             process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols)
             
-            # Get SOP ID for this stream
+            # Get SOPs for this stream
             try:
                 response = requests.get(get_api_url(f'/api/stream/{stream_id}'))
                 if not response.ok:
@@ -222,16 +222,16 @@ class ScreenshotProcessor:
                     logger.warning(f"No SOPs associated with stream {stream_name}")
                     return True
                 
-                # Use the first SOP for analysis
-                sop_id = stream_data['sops'][0]['id']
-                
-                # Analyze the grid with Gemini
-                try:
-                    analysis_result = self.analyze_grid_with_gemini(grid_path, stream_id, sop_id)
-                except Exception as e:
-                    logger.error(f"Grid analysis failed for {stream_name}: {e}")
-                    # Don't return False here as the grid was created successfully
-                    # Just log the error and continue
+                # Analyze the grid with each SOP
+                for sop in stream_data['sops']:
+                    try:
+                        analysis_result = self.analyze_grid_with_gemini(grid_path, stream_id, sop['id'])
+                        logger.info(f"Successfully analyzed grid with SOP {sop['name']} (ID: {sop['id']})")
+                    except Exception as e:
+                        logger.error(f"Grid analysis failed for SOP {sop['name']} (ID: {sop['id']}): {e}")
+                        # Continue with other SOPs even if one fails
+                        continue
+                    
             except Exception as e:
                 logger.error(f"Error getting stream details: {e}")
             

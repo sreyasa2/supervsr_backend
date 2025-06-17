@@ -17,3 +17,31 @@
   }
 }
 ---
+{
+  "timestamp": "2025-06-17 16:07:51",
+  "sop_id": 8,
+  "structured_output": {
+    "type": "object",
+    "required": [
+      "Decanter being opened",
+      "Decanter already opened",
+      "Decanter being closed",
+      "Decanter already closed"
+    ],
+    "properties": {
+      "Decanter being opened": {
+        "type": "boolean"
+      },
+      "Decanter already opened": {
+        "type": "boolean"
+      },
+      "Decanter being closed": {
+        "type": "boolean"
+      },
+      "Decanter already closed": {
+        "type": "boolean"
+      }
+    }
+  }
+}
+---
