@@ -33,9 +33,9 @@ def health_check():
         return False
 
 def list_videos():
-    """List all videos in the system"""
+    """List all streams in the system"""
     try:
-        response = requests.get(urljoin(API_BASE_URL, '/api/videos'))
+        response = requests.get(urljoin(API_BASE_URL, '/api/streams'))
         response.raise_for_status()
         return response.json()['videos']
     except Exception as e:
@@ -51,7 +51,7 @@ def upload_video(video_path):
     try:
         with open(video_path, 'rb') as f:
             files = {'video': f}
-            response = requests.post(urljoin(API_BASE_URL, '/api/videos'), files=files)
+            response = requests.post(urljoin(API_BASE_URL, '/api/streams'), files=files)
         
         if response.status_code == 200:
             return response.json()
@@ -65,7 +65,7 @@ def upload_video(video_path):
 def get_screenshots(video_id):
     """Get screenshots for a video"""
     try:
-        response = requests.get(urljoin(API_BASE_URL, f'/api/video/{video_id}/screenshots'))
+        response = requests.get(urljoin(API_BASE_URL, f'/api/stream/{video_id}/screenshots'))
         response.raise_for_status()
         return response.json()['screenshots']
     except Exception as e:
