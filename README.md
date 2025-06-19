@@ -89,9 +89,11 @@ GEMINI_API_KEY=your_gemini_api_key
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check endpoint |
-| `/api/videos` | GET | List all uploaded videos |
-| `/api/videos` | POST | Upload a new video |
-| `/api/video/<id>/screenshots` | GET | Get screenshots for a video |
+| `/api/streams` | GET | List all RTSP streams |
+| `/api/streams` | POST | Add a new RTSP stream |
+| `/api/stream/<id>` | GET | Get details of a stream |
+| `/api/stream/<id>` | PUT | Update a stream |
+| `/api/stream/<id>` | DELETE | Delete a stream |
 | `/api/screenshot/<id>/analyze` | POST | Analyze a screenshot with Gemini AI |
 | `/api/screenshot/<id>/analysis` | GET | Get analysis results for a screenshot |
 
@@ -104,15 +106,15 @@ See `example.py` for a complete demonstration of the API usage.
 ```python
 import requests
 
-# Upload a video
+# Add a stream
 with open('my_video.mp4', 'rb') as f:
     files = {'video': f}
-    response = requests.post('http://localhost:5000/api/videos', files=files)
-    
-video_id = response.json()['video_id']
+    response = requests.post('http://localhost:5000/api/streams', files=files)
+
+stream_id = response.json()['stream_id']
 
 # Get screenshots
-screenshots = requests.get(f'http://localhost:5000/api/video/{video_id}/screenshots').json()['screenshots']
+screenshots = requests.get(f'http://localhost:5000/api/stream/{stream_id}/screenshots').json()['screenshots']
 
 # Analyze a screenshot
 screenshot_id = screenshots[0]['id']
