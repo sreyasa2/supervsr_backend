@@ -32,10 +32,9 @@ def create_app(test_config=None):
     CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://127.0.0.1:8080"]}}, supports_credentials=True)
     
     # Load configuration
-    if test_config is None:
-        from api.config import get_config
-        app.config.from_object(get_config())
-    else:
+    from api.config import get_config
+    app.config.from_object(get_config())
+    if test_config is not None:
         app.config.from_mapping(test_config)
     
     # Ensure instance folder exists

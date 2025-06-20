@@ -6,6 +6,7 @@ from datetime import datetime
 from collections import defaultdict
 from urllib.parse import urlparse
 from flask import current_app
+import tempfile
 
 from api.utils.gcs_utils import GCSUtils
 from api.utils.api_utils import get_api_url
@@ -24,13 +25,14 @@ class ScreenshotProcessor:
             cls._instance = super(ScreenshotProcessor, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, gcs_utils: GCSUtils, screenshots_per_grid: int = 6):
+    def __init__(self, gcs_utils: GCSUtils, screenshots_per_grid: int = 6, store_locally: bool = True):
         """
         Initialize the ScreenshotProcessor.
         
         Args:
             gcs_utils: GCSUtils instance for GCS operations
             screenshots_per_grid: Number of screenshots needed for a grid (should be grid_rows * grid_cols)
+            store_locally: Whether to store screenshots locally as well as in GCS
         """
         if not self._initialized:
             self.gcs_utils = gcs_utils
@@ -38,6 +40,8 @@ class ScreenshotProcessor:
             self.screenshot_counts = defaultdict(int)
             self._initialized = True
             logger.info("Initialized new ScreenshotProcessor instance")
+        # Always update store_locally, even if already initialized
+        self.store_locally = store_locally
     
     def create_analysis_record(self, rtsp_id: str, sop_id: str, output: dict) -> bool:
         """
@@ -151,11 +155,12 @@ class ScreenshotProcessor:
                 logger.error(f"Failed to upload screenshot to GCS: {file_name}")
                 return False
             
-            # Save locally
-            local_dir = os.path.join('uploads', 'screenshots')
-            os.makedirs(local_dir, exist_ok=True)
-            local_path = os.path.join(local_dir, os.path.basename(file_name))
-            shutil.copy2(frame_path, local_path)
+            # Save locally if enabled
+            if self.store_locally:
+                local_dir = os.path.join('uploads', 'screenshots')
+                os.makedirs(local_dir, exist_ok=True)
+                local_path = os.path.join(local_dir, os.path.basename(file_name))
+                shutil.copy2(frame_path, local_path)
             
             # Increment counter and check if we need to create a grid
             self.screenshot_counts[stream_id] += 1
@@ -208,12 +213,24 @@ class ScreenshotProcessor:
             os.makedirs(os.path.dirname(grid_path), exist_ok=True)
             
             # Process the images into a grid
-            process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols)
+            stitched = process_images(recent_screenshot_urls, grid_path, grid_rows, grid_cols, store_locally=self.store_locally)
+            
+            if self.store_locally:
+                upload_path = grid_path
+            else:
+                # Save to a temp file for upload
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    stitched.save(tmp.name)
+                    upload_path = tmp.name
             
             # Upload grid to GCS
-            if not self.gcs_utils.upload_file(grid_path, grid_filename):
+            if not self.gcs_utils.upload_file(upload_path, grid_filename):
                 logger.error(f"Failed to upload grid to GCS: {grid_filename}")
                 return False
+            
+            # Clean up temp file if needed
+            if not self.store_locally:
+                os.remove(upload_path)
             
             # Get GCS URL for the grid
             grid_url = self.gcs_utils.get_file_url(grid_filename)

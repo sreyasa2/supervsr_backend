@@ -73,7 +73,7 @@ def annotate_image(image: Image.Image, name: str) -> Image.Image:
     
     return annotated
 
-def stitch_images(images: List[Tuple[str, Image.Image]], output_path: str, grid_rows: int, grid_cols: int):
+def stitch_images(images: List[Tuple[str, Image.Image]], output_path: str, grid_rows: int, grid_cols: int, store_locally: bool = True):
     """
     Stitches a batch of images into a single grid image.
     
@@ -82,9 +82,10 @@ def stitch_images(images: List[Tuple[str, Image.Image]], output_path: str, grid_
         output_path: Path to save the stitched image
         grid_rows: Number of rows in the grid
         grid_cols: Number of columns in the grid
+        store_locally: Whether to save the image locally
     """
     if not images:
-        return
+        return None
     
     # Get dimensions of first image
     single_width, single_height = images[0][1].size
@@ -100,18 +101,21 @@ def stitch_images(images: List[Tuple[str, Image.Image]], output_path: str, grid_
     for i, (_, image) in enumerate(images):
         if i >= grid_rows * grid_cols:
             break
-            
+        
         row = i // grid_cols
         col = i % grid_cols
         x = col * (single_width + BORDER_SIZE)
         y = row * (single_height + BORDER_SIZE)
         stitched.paste(image, (x, y))
     
-    # Save the stitched image
-    stitched.save(output_path)
-    logger.info(f"✅ Saved stitched image: {output_path}")
+    # Save the stitched image if requested
+    if store_locally:
+        stitched.save(output_path)
+        logger.info(f"✅ Saved stitched image: {output_path}")
+    
+    return stitched
 
-def process_images(image_urls: List[str], output_path: str, grid_rows: int = 2, grid_cols: int = 3):
+def process_images(image_urls: List[str], output_path: str, grid_rows: int = 2, grid_cols: int = 3, store_locally=True):
     """
     Downloads images from GCS bucket links and creates a grid image.
     
@@ -120,6 +124,7 @@ def process_images(image_urls: List[str], output_path: str, grid_rows: int = 2, 
         output_path: Path to save the stitched image
         grid_rows: Number of rows in the grid (default: 2)
         grid_cols: Number of columns in the grid (default: 3)
+        store_locally: Whether to save the image locally (default: True)
     """
     if not image_urls:
         raise ValueError("No image URLs provided")
@@ -150,8 +155,10 @@ def process_images(image_urls: List[str], output_path: str, grid_rows: int = 2, 
         raise ValueError("No images were successfully processed")
     
     # Create grid image
-    stitch_images(processed_images, output_path, grid_rows, grid_cols)
-    logger.info("✅ Grid image created successfully")
+    stitched = stitch_images(processed_images, output_path, grid_rows, grid_cols, store_locally=store_locally)
+    
+    # Always return the stitched image object for further use (e.g., upload to GCS)
+    return stitched
 
 if __name__ == "__main__":
     # Example usage

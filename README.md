@@ -33,6 +33,15 @@ For local development with automatic reloading:
 python main.py
 ```
 
+You can use the `--local` flag to control whether screenshots and grid images are stored locally in addition to being uploaded to Google Cloud Storage (GCS):
+
+```bash
+python main.py --local
+```
+
+- If you use `--local`, screenshots and grid images will be saved to the `uploads/` directory as well as uploaded to GCS.
+- If you omit `--local`, images will **only** be uploaded to GCS and will not be stored locally.
+
 #### Production Mode
 
 For production deployment:

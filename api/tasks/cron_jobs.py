@@ -14,17 +14,16 @@ logger = logging.getLogger(__name__)
 GRID_ROWS = 2
 GRID_COLS = 3
 
-# Initialize utilities
-gcs_utils = GCSUtils()
-stream_manager = StreamManager()
-screenshot_processor = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS)
-
 # Cache for streams
 streams_cache = {
     'streams': [],
     'last_updated': 0,
     'ttl': None  # Will be set from config when first used
 }
+
+gcs_utils = GCSUtils()
+stream_manager = StreamManager()
+screenshot_processor = None
 
 def get_streams():
     """Get streams from cache or API"""
@@ -119,6 +118,13 @@ def verify_streams(app):
 def screenshots(app):
     """Capture latest frame from memory and upload every 10 seconds"""
     with app.app_context():
+        global screenshot_processor
+        if screenshot_processor is None:
+            store_locally = app.config.get('LOCAL_SCREENSHOT_STORAGE', True)
+            # Re-instantiate ScreenshotProcessor with the correct flag
+            # (Singleton pattern will ensure only one instance is used)
+            screenshot_processor_instance = ScreenshotProcessor(gcs_utils, screenshots_per_grid=GRID_ROWS * GRID_COLS, store_locally=store_locally)
+            screenshot_processor = screenshot_processor_instance
         streams = get_streams()
         
         for stream in streams:
